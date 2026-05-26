@@ -1,0 +1,156 @@
+¡¡ Programa de prueba completo
+
+{- 
+    Funcion que calcula algo 
+-}
+
+int~suma<|int~a,int~b|>
+|:
+    return~a+b!
+:|
+
+bool~esMayor<|int~x,int~y|>
+|:
+    return~greater_t<|x,y|>!
+:|
+
+float~promedio<|float~n1,float~n2|>
+|:
+    return~<|n1+n2|>/2.0!
+:|
+
+string~saludar<|string~nombre|>
+|:
+    return~"Hola "!
+:|
+
+float~factorial<|int~n|>
+|:
+    int~resultado<-1!
+    do~|:
+        resultado<-resultado*n!
+        n<-n-1!
+    :| while~<|greater_t<|n,0|>|>!
+    return~resultado!
+:|
+
+empty~__main__<||>
+|:
+    ¡¡ Variables basicas
+    int~x<-10!
+    float~y<-3.14!
+    bool~flag<-true!
+    char~c<-'a'!
+    string~msg<-"Hola Mundo"!
+    
+    ¡¡ Operaciones aritmeticas
+    int~z<-x+5*2!
+    float~w<-y/2.0+1.5!
+    int~modulo<-10%3!
+    int~pot<-2^3!
+    
+    ¡¡ Operaciones unarias
+    int~neg<- -5!
+    ++x!
+    --y!
+    
+    ¡¡ Operadores relacionales
+    bool~comp1<-equal<|x,10|>!
+    bool~comp2<-n_equal<|x,5|>!
+    bool~comp3<-less_t<|y,5.0|>!
+    bool~comp4<-less_te<|z,20|>!
+    bool~comp5<-greather_t<|w,1.0|>!
+    bool~comp6<-greather_te<|pot,7|>!
+    
+    ¡¡ Operadores logicos
+    bool~log1<-flag@true!
+    bool~log2<-comp1#comp2!
+    bool~log3<-$flag!
+    
+    ¡¡ If-else
+    if~<|greather_t<|x,5|>|>
+    |:
+        cout~x!
+    :|
+    else~|:
+        cout~0!
+    :|
+    
+    ¡¡ If-else anidado
+    if~<|less_t<|x,5|>|>
+    |:
+        cout~1!
+    :|
+    else~
+    |:
+    if~<|equal<|x,10|>|>
+    |:
+        cout~10!
+    :|
+    else~|:
+        cout~0!
+    :|
+    
+    ¡¡ Do-while
+    int~cont<-0!
+    do~|:
+        cont<-cont+1!
+    :| while~<|less_t<|cont,5|>|>!
+    
+    ¡¡ Switch con default
+    switch~<|x|>
+    |:
+        case~1:
+            cout~1!
+        case~10:
+            cout~10!
+        default:
+            cout~0!
+    :|
+    
+    ¡¡ Switch sin default
+    switch~<|cont|>
+    |:
+        case~1:
+            cout~1!
+        case~5:
+            cout~5!
+    :|
+    
+    ¡¡ Arreglos
+    int~arr<<3>><<3>>!
+    float~mat<<2>><<2>><-|:
+        |:1.0,2.0:|,
+        |:3.0,4.0:|
+    :|!
+    
+    ¡¡ Acceso y asignacion a arreglos
+    arr<<0>><<0>><-5!
+    mat<<1>><<1>><-10.5!
+    int~val<-arr<<0>><<0>>!
+    
+    ¡¡ Llamadas a funciones
+    int~s<-suma<|x,z|>!
+    bool~m<-esMayor<|x,y|>!
+    cout~saludar<|msg|>!
+    
+    ¡¡ break
+    int~i<-0!
+    do~|:
+        i<-i+1!
+        if~<|equal<|i,3|>|>
+        |:
+            break!
+        :|
+    :| while~<|less_t<|i,10|>|>!
+    
+    ¡¡ Entrada/Salida
+    cout~x!
+    cout~y!
+    cout~msg!
+    cout~true!
+    cin~x!
+    
+    ¡¡ Return
+    return~0!
+:|:|

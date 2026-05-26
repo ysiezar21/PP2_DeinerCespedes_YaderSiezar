@@ -1,0 +1,95 @@
+================================================================================
+TABLAS DE SÍMBOLOS POR SCOPE
+================================================================================
+
+SCOPE: suma
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
+a                 	ID                	a                 	9     	12
+b                 	ID                	b                 	9     	14
+
+SCOPE: esMayor
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
+greater_t         	ID                	greater_t         	14    	12
+x                 	ID                	x                 	14    	23
+y                 	ID                	y                 	14    	25
+
+SCOPE: promedio
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
+n1                	ID                	n1                	19    	14
+n2                	ID                	n2                	19    	17
+2.0               	FLOAT_LIT         	2.0               	19    	22
+
+SCOPE: saludar
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
+"Hola "           	STRING_LIT        	Hola              	24    	12
+
+SCOPE: factorial
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
+resultado         	ID                	resultado         	29    	9
+1                 	INT_LIT           	1                 	29    	20
+n                 	ID                	n                 	31    	30
+greater_t         	ID                	greater_t         	33    	16
+0                 	INT_LIT           	0                 	33    	29
+
+SCOPE: main
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
+x                 	ID                	x                 	40    	9
+10                	INT_LIT           	10                	40    	12
+y                 	ID                	y                 	41    	11
+3.14              	FLOAT_LIT         	3.14              	41    	14
+flag              	ID                	flag              	42    	10
+true              	BOOL_LIT          	true              	42    	16
+c                 	ID                	c                 	43    	10
+'a'               	CHAR_LIT          	a                 	43    	13
+msg               	ID                	msg               	44    	12
+"Hola Mundo"      	STRING_LIT        	Hola Mundo        	44    	17
+z                 	ID                	z                 	47    	9
+5                 	INT_LIT           	5                 	47    	14
+2                 	INT_LIT           	2                 	47    	16
+w                 	ID                	w                 	48    	11
+2.0               	FLOAT_LIT         	2.0               	48    	16
+1.5               	FLOAT_LIT         	1.5               	48    	20
+modulo            	ID                	modulo            	49    	9
+3                 	INT_LIT           	3                 	49    	20
+pot               	ID                	pot               	50    	9
+neg               	ID                	neg               	53    	9
+comp1             	ID                	comp1             	58    	10
+comp2             	ID                	comp2             	59    	10
+comp3             	ID                	comp3             	60    	10
+5.0               	FLOAT_LIT         	5.0               	60    	27
+comp4             	ID                	comp4             	61    	10
+20                	INT_LIT           	20                	61    	28
+comp5             	ID                	comp5             	62    	10
+1.0               	FLOAT_LIT         	1.0               	62    	31
+comp6             	ID                	comp6             	63    	10
+7                 	INT_LIT           	7                 	63    	34
+log1              	ID                	log1              	66    	10
+log2              	ID                	log2              	67    	10
+log3              	ID                	log3              	68    	10
+0                 	INT_LIT           	0                 	76    	14
+1                 	INT_LIT           	1                 	82    	14
+cont              	ID                	cont              	95    	9
+arr               	ID                	arr               	121   	9
+mat               	ID                	mat               	122   	11
+3.0               	FLOAT_LIT         	3.0               	124   	11
+4.0               	FLOAT_LIT         	4.0               	124   	15
+10.5              	FLOAT_LIT         	10.5              	129   	20
+val               	ID                	val               	130   	9
+s                 	ID                	s                 	133   	9
+suma              	ID                	suma              	133   	12
+m                 	ID                	m                 	134   	10
+esMayor           	ID                	esMayor           	134   	13
+saludar           	ID                	saludar           	135   	10
+i                 	ID                	i                 	138   	9

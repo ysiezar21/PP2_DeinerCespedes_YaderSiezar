@@ -1,0 +1,357 @@
+/**
+ * Parser.cup - Analizador Sintáctico
+ * Objetivo:   Verificar que la secuencia de tokens cumple con la gramática del lenguaje.
+ * Entrada:    Tokens del Lexer
+ * Salida:     Consola (válido/errores) y archivos _tokens.txt, _symbols.txt
+ * Restricción: Recuperación en modo pánico ante errores sintácticos.
+ */
+
+import java_cup.runtime.*;
+
+parser code {:
+
+    /** Contador de errores sintácticos encontrados */
+    public int errorCount = 0;
+    
+    /** Nombre de la función actual para nombrar los scopes */
+    private String currentFunc = "main";
+
+    /**
+     * Manejo de error sintáctico recuperable.
+     * Reporta el error y continúa el análisis.
+     */
+    @Override
+    public void syntax_error(Symbol cur_token) {
+        errorCount++;
+        int line   = cur_token.left;
+        int column = cur_token.right;
+        String lexema = (cur_token.value != null) ? cur_token.value.toString() : "";
+        System.err.println("Error sintáctico en línea " + line +
+                           ", columna " + column +
+                           ": token inesperado '" + lexema + "'");
+    }
+
+    /**
+     * Manejo de error sintáctico irrecuperable.
+     * Reporta el error y detiene el análisis.
+     */
+    @Override
+    public void unrecovered_syntax_error(Symbol cur_token) throws Exception {
+        errorCount++;
+        int line   = cur_token.left;
+        int column = cur_token.right;
+        String lexema = (cur_token.value != null) ? cur_token.value.toString() : "";
+        System.err.println("Error sintáctico irrecuperable en línea " + line +
+                           ", columna " + column +
+                           ": '" + lexema + "'. Se detiene el análisis.");
+    }
+
+:}
+
+// ===== TERMINALES (tokens del Lexer) =====
+
+// Palabras reservadas del lenguaje
+terminal EMPTY, INT, FLOAT, CHAR, BOOL, STRING;
+terminal IF, ELSE, DO, WHILE, SWITCH, CASE, DEFAULT;
+terminal RETURN, BREAK, CIN, COUT;
+terminal MAIN;
+
+// Operadores relacionales: equal, n_equal, less_t, less_te, greather_t, greather_te
+terminal EQUAL, N_EQUAL, LESS_T, LESS_TE;
+terminal GREATHER_T, GREATHER_TE;
+
+// Delimitadores: <| |>, |: :|, << >>, <-, ~, !, ,, :
+terminal LPAR, RPAR, LBLOCK, RBLOCK, LBRACKET, RBRACKET;
+terminal ASSIGN, SEPARATOR, EXCLAMATION, COMMA, COLON;
+
+// Operadores aritméticos: +, -, *, /, %, ^
+terminal PLUS, MINUS, TIMES, DIVIDE, MOD, POWER;
+
+// Operadores unarios y lógicos: ++, --, @, #, $
+terminal INCREMENT, DECREMENT;
+terminal AND, OR, NOT;
+
+// Literales con su tipo de dato asociado
+terminal Integer   INT_LIT;
+terminal Float     FLOAT_LIT;
+terminal String    EXP_LIT, FRAC_LIT;
+terminal Boolean   BOOL_LIT;
+terminal Character CHAR_LIT;
+terminal String    STRING_LIT, ID;
+
+// ===== NO TERMINALES (reglas de la gramática) =====
+non terminal programa, funcion_lista, funcion, main_proc;
+non terminal tipo_retorno, param_lista, param, tipo;
+non terminal bloque, sentencia_lista, sentencia;
+non terminal decl, asig, arr_access, arr_init;
+non terminal control, if_stmt, do_while, switch_stmt;
+non terminal case_lista, case_item, case_items, default_case;
+non terminal return_stmt, io_stmt;
+non terminal expr, expr_log, expr_rel, expr_arit, term, potencia, unario, primario;
+non terminal llamada, arg_lista, literal;
+
+non terminal if_stmt_cond;
+
+// ===== PRECEDENCIA (de menor a mayor) =====
+// Define el orden de evaluación de operadores
+precedence left OR;             // # (disyunción)
+precedence left AND;            // @ (conjunción)
+precedence right NOT;           // $ (negación)
+precedence left EQUAL, N_EQUAL, LESS_T, LESS_TE, GREATHER_T, GREATHER_TE;
+precedence left PLUS, MINUS;    // +, -
+precedence left TIMES, DIVIDE, MOD; // *, /, %
+precedence right POWER;         // ^ (asociativo derecha)
+precedence right INCREMENT, DECREMENT; // ++, --
+
+// ===== SÍMBOLO INICIAL =====
+start with programa;
+
+// ===== REGLAS GRAMATICALES =====
+
+// Programa: lista de funciones seguida del main, o solo main
+programa ::= funcion_lista main_proc
+    | main_proc
+    | error
+    ;
+
+// Lista de funciones: una o más funciones
+funcion_lista ::= funcion
+    | funcion_lista funcion
+    ;
+
+// Procedimiento principal: empty ~ __main__ <| |> bloque
+// Crea el scope "main" para la tabla de símbolos
+main_proc ::= EMPTY SEPARATOR MAIN LPAR RPAR 
+    {:
+        currentFunc = "main";
+        Lexer.pushScope("main");
+    :}
+    bloque:b
+    {:
+        Lexer.popScope();
+    :}
+    | EMPTY SEPARATOR MAIN LPAR RPAR error
+    ;
+
+// Función: tipo_retorno ~ nombre ~ <| parámetros |> bloque
+// Crea un scope con el nombre de la función
+funcion ::= tipo_retorno:tr SEPARATOR ID:id LPAR param_lista:pl RPAR 
+    {:
+        currentFunc = id;
+        Lexer.pushScope(currentFunc);
+    :}
+    bloque:b
+    {:
+        Lexer.popScope();
+    :}
+    | tipo_retorno:tr SEPARATOR ID:id LPAR RPAR 
+    {:
+        currentFunc = id;
+        Lexer.pushScope(currentFunc);
+    :}
+    bloque:b
+    {:
+        Lexer.popScope();
+    :}
+    | tipo_retorno SEPARATOR ID LPAR param_lista RPAR error
+    | tipo_retorno SEPARATOR ID LPAR RPAR error
+    ;
+
+// Tipo de retorno de función
+tipo_retorno ::= INT | FLOAT | CHAR | BOOL | STRING
+    ;
+
+// Lista de parámetros: separados por coma
+param_lista ::= param
+    | param_lista COMMA param
+    ;
+
+// Parámetro: tipo ~ identificador
+param ::= tipo SEPARATOR ID
+    ;
+
+// Tipos de datos disponibles
+tipo ::= INT | FLOAT | BOOL | CHAR | STRING
+    ;
+
+// Bloque de código: |: sentencias :| o vacío |: :|
+// Con recuperación de errores interna
+bloque ::= LBLOCK sentencia_lista RBLOCK
+    | LBLOCK RBLOCK
+    | LBLOCK error RBLOCK
+    ;
+
+// Lista de sentencias: una o más
+sentencia_lista ::= sentencia
+    | sentencia_lista sentencia
+    ;
+
+// Sentencia: termina con ! (excepto estructuras de control y bloques)
+sentencia ::= decl EXCLAMATION
+    | asig EXCLAMATION
+    | expr EXCLAMATION
+    | control
+    | return_stmt EXCLAMATION
+    | BREAK EXCLAMATION
+    | io_stmt EXCLAMATION
+    | bloque
+    ;
+
+// Declaración de variable o arreglo
+decl ::= tipo SEPARATOR ID
+    | tipo SEPARATOR ID ASSIGN expr
+    | tipo SEPARATOR ID LBRACKET INT_LIT RBRACKET LBRACKET INT_LIT RBRACKET
+    | tipo SEPARATOR ID LBRACKET INT_LIT RBRACKET LBRACKET INT_LIT RBRACKET ASSIGN LBLOCK arr_init RBLOCK
+    ;
+
+// Inicialización de arreglo: expresiones separadas por coma, permite sublistas
+arr_init ::= expr
+    | LBLOCK arr_init RBLOCK
+    | arr_init COMMA expr
+    | arr_init COMMA LBLOCK arr_init RBLOCK
+    ;
+
+// Asignación a variable o elemento de arreglo
+asig ::= ID ASSIGN expr
+    | arr_access ASSIGN expr
+    ;
+
+// Acceso a arreglo bidimensional: id << expr >> << expr >>
+arr_access ::= ID LBRACKET expr RBRACKET LBRACKET expr RBRACKET
+    ;
+
+// Estructuras de control
+control ::= if_stmt
+    | do_while
+    | switch_stmt
+    ;
+
+if_stmt_cond ::= IF SEPARATOR LPAR expr RPAR 
+    {:
+        currentFunc = Lexer.pushIfScope(currentFunc);
+
+    :};
+
+// Condicional if / if-else
+if_stmt ::= if_stmt_cond bloque {: Lexer.popScope(); :}
+    | if_stmt_cond bloque {: Lexer.popScope(); :} ELSE SEPARATOR bloque
+    | IF SEPARATOR LPAR error RPAR bloque
+    | IF SEPARATOR LPAR error RPAR bloque ELSE SEPARATOR bloque
+    ;
+
+// Bucle do-while: do ~ bloque while ~ <| condición |> !
+do_while ::= DO SEPARATOR bloque WHILE SEPARATOR LPAR expr RPAR EXCLAMATION
+    | DO SEPARATOR bloque WHILE SEPARATOR LPAR error RPAR EXCLAMATION
+    ;
+
+// Switch: switch ~ <| expr |> |: cases :|
+switch_stmt ::= SWITCH SEPARATOR LPAR expr RPAR LBLOCK case_lista RBLOCK
+    | SWITCH SEPARATOR LPAR error RPAR LBLOCK case_lista RBLOCK
+    ;
+
+// Lista de casos: opcionalmente termina con default
+case_lista ::= case_items default_case
+    | case_items
+    ;
+
+// Secuencia de casos
+case_items ::= case_item
+    | case_items case_item
+    ;
+
+// Un caso: case ~ literal : sentencias
+case_item ::= CASE SEPARATOR literal COLON sentencia_lista
+    | error COLON sentencia_lista
+    ;
+
+// Caso default: default : sentencias (único, al final)
+default_case ::= DEFAULT COLON sentencia_lista
+    ;
+
+// Sentencia return: return ~ expresión
+return_stmt ::= RETURN SEPARATOR expr
+    ;
+
+// Entrada/Salida: cin ~ id, cout ~ expr
+io_stmt ::= CIN SEPARATOR ID
+    | COUT SEPARATOR expr
+    ;
+
+// ===== EXPRESIONES (jerarquía de precedencia) =====
+
+// Expresión completa
+expr ::= expr_log
+    ;
+
+// Expresiones lógicas: @ (AND), # (OR)
+expr_log ::= expr_log AND expr_rel
+    | expr_log OR expr_rel
+    | expr_rel
+    ;
+
+// Expresiones relacionales: equal, n_equal (boolean), less_t, less_te, greather_t, greather_te
+expr_rel ::= EQUAL      LPAR expr COMMA expr RPAR
+    | N_EQUAL            LPAR expr COMMA expr RPAR
+    | LESS_T             LPAR expr_arit COMMA expr_arit RPAR
+    | LESS_TE            LPAR expr_arit COMMA expr_arit RPAR
+    | GREATHER_T         LPAR expr_arit COMMA expr_arit RPAR
+    | GREATHER_TE        LPAR expr_arit COMMA expr_arit RPAR
+    | expr_arit
+    ;
+
+// Expresiones aritméticas: +, -
+expr_arit ::= expr_arit PLUS term
+    | expr_arit MINUS term
+    | term
+    ;
+
+// Término: *, /, %
+term ::= term TIMES potencia
+    | term DIVIDE potencia
+    | term MOD potencia
+    | potencia
+    ;
+
+// Potencia: ^ (asociativa derecha)
+potencia ::= unario POWER potencia
+    | unario
+    ;
+
+// Operadores unarios: - (solo literales), ++, --, $ (NOT)
+unario ::= MINUS INT_LIT
+    | MINUS FLOAT_LIT
+    | MINUS EXP_LIT
+    | MINUS FRAC_LIT
+    | INCREMENT ID
+    | DECREMENT ID
+    | NOT primario
+    | primario
+    ;
+
+// Elemento primario: literal, variable, arreglo, función, agrupación
+primario ::= literal
+    | ID
+    | arr_access
+    | llamada
+    | LPAR expr RPAR
+    ;
+
+// Llamada a función: id ~ <| args |>
+llamada ::= ID LPAR arg_lista RPAR
+    | ID LPAR RPAR
+    ;
+
+// Lista de argumentos: expresiones separadas por coma
+arg_lista ::= expr
+    | arg_lista COMMA expr
+    ;
+
+// Literales reconocidos por el lenguaje
+literal ::= INT_LIT
+    | FLOAT_LIT
+    | EXP_LIT
+    | FRAC_LIT
+    | BOOL_LIT
+    | CHAR_LIT
+    | STRING_LIT
+    ;

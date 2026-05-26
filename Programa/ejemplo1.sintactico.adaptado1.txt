@@ -1,0 +1,78 @@
+
+ float~func1<|char~x22,char~x22|>|: ¡¡semantico borrar parametro
+	float~a<--0.01! ¡¡error sintactico
+	char~_x22_<-'a'!{- semantico x22 -}
+	char~_miChar_<-'!'!¡¡error sintactico
+	char~_miChar2_<-'!'!¡¡sintactico-semantico
+	int~_x30_<--1!
+	bool~_x40_<-false!
+	float~_x50_<<1000>><<100>>!¡¡sitactico
+	float~_x50_<<1000>><<6>><-|:|:4,5:|,|:4,5:|,|:4,5:|:|!¡¡semantico
+	int~_x50_<<1000>><<67>><-|:|:4.4,5.5:|,|:4.4,5.5:|,|:4.4,5.5:|:|!¡¡semantico
+	int~_<-100e10+-100e10!
+	float~_<--5//6+9//16!¡¡sitactico
+	string~_x50_<-"Hola a todos los $ que est<<a>> haciendo un compilador nuevo|:n"!
+	if~<|less_te<|x22,45|>@greather_t<|var,5//6|>|>|:¡¡semantico x22, var
+		int~y!
+		char~x45!
+		x22<-10!
+		char~ch33<-'a'!
+	 :|
+	else~|: 
+		int~y! ¡¡no error duplicado en if-else
+		string~str2<-"sdff"!
+	 :|
+	if~<|equal<|5,3|>|>|:
+		int~x!
+	:|
+	do~|:cout~<|_i_|>!:|¡¡semantico i
+	while~<|equal<|1*id,2/f<||>|>@less_te<|var,f1<|1,'c',"d",f1<|x|>|>|>#$<|false|>|>!¡¡semantico
+	cout~<|"Hola mundo"|>!
+	cout~<|Holamundo|>!
+	cin~_x22_!
+	return~-5.6!¡¡cambio en retorno genera semantico
+ :|  
+
+ bool~_func2_  <| bool~_b1_, int~_i1_ |>   |: 
+	int~b! ¡¡sintactico
+	return~b! ¡¡generar error con -5.6 y con i1
+	if~<|equal<|5,3|>|>|:
+		int~x!
+	:|
+	else~|:
+		int~z!
+	:|
+
+	if~<|equal<|5,3|>|>|:
+		int~x!
+	:|
+:|  
+
+string~_func3_  <|  |>   |:  ¡¡semantico string
+	string~_b1_!
+	return~_b1_! 
+  :| 
+
+empty~__main__ <|  |>  |: 
+{-
+Comentario 1
+-}
+	char~miChar<-'!'!
+	char~miChar2<-'!'! ¡¡sintactico
+	string~str1<-"Mi string 1"!
+	float~fl1!
+	float~fl1<-56.6 / 6//8! ¡¡semantico fl1
+	int~in1<---fl1- -14+ ++in1 % 7 / 15! ¡¡sintactico esparado? <--- semantico fl1, in1
+	float~fl2<-3.7 ^ fl1+ <| 45.6 % 76 |> ! ¡¡semantico literal 76
+	
+¡¡comentario 2
+	arr <- 10 - arr<<67>><<67*f<||>>> * func1  <| hola, true, "hola mundo", 4.5, 'a' |> ! ¡¡semantico func1, retorno func1
+	arr<<67>><<67*f<||>>> <- 1//1!
+	fl1 <- 4.5%miChar^-0.005! ¡¡semantico miChar
+	miFunc <| miFunc <|  |> ,'a' |> ! ¡¡semantico miFunc, hola
+	bool~bl0 <- n_equal<|6.7 , 8//9 |>! ¡¡ok
+	bl0 <- $<|n_equal<|true , equal<|1+1,2*2|>|>|>! ¡¡ok
+	bool~bl1 <- greather_t<|in1 , fl1 |> # false @ $ <| greather_te<|func2 <| 3,in1 |> , 56 |> |> ! ¡¡semantico in1 ><- fl1, func2
+	return~bl1! ¡¡semantico
+ :|
+

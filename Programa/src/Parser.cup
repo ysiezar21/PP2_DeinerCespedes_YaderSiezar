@@ -246,9 +246,9 @@ else_stmt_cond ::= ELSE SEPARATOR
 
 // Condicional if / if-else
 if_stmt ::= if_stmt_cond bloque close_scope
-    | if_stmt_cond bloque {: Lexer.popScope(); :} else_stmt_cond bloque {: Lexer.popScope(); :}
+    | if_stmt_cond bloque close_scope else_stmt_cond bloque close_scope
     | IF SEPARATOR LPAR error RPAR bloque
-    | IF SEPARATOR LPAR error RPAR bloque else_stmt_cond bloque {: Lexer.popScope(); :}
+    | IF SEPARATOR LPAR error RPAR bloque else_stmt_cond bloque close_scope
     ;
 
 do_stmt_cond ::= DO SEPARATOR 

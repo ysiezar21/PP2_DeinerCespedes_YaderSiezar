@@ -129,10 +129,7 @@ main_proc ::= EMPTY SEPARATOR MAIN LPAR RPAR
         currentFunc = "main";
         Lexer.pushScope("main");
     :}
-    bloque:b
-    {:
-        Lexer.popScope();
-    :}
+    bloque close_scope
     | EMPTY SEPARATOR MAIN LPAR RPAR error
     ;
 

@@ -85,11 +85,18 @@ str1              	ID                	str1              	62    	9
 fl1               	ID                	fl1               	63    	8
 in1               	ID                	in1               	65    	6
 fl2               	ID                	fl2               	66    	8
-arr               	ID                	arr               	69    	2
-f                 	ID                	f                 	69    	28
-func1             	ID                	func1             	69    	38
-hola              	ID                	hola              	69    	48
-miFunc            	ID                	miFunc            	72    	2
-bl0               	ID                	bl0               	73    	7
-bl1               	ID                	bl1               	75    	7
-func2             	ID                	func2             	75    	67
+arr               	ID                	arr               	73    	14
+f                 	ID                	f                 	73    	28
+func1             	ID                	func1             	73    	38
+hola              	ID                	hola              	73    	48
+miFunc            	ID                	miFunc            	76    	2
+bl0               	ID                	bl0               	77    	7
+bl1               	ID                	bl1               	79    	7
+func2             	ID                	func2             	79    	67
+
+SCOPE: main_if1
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
+x                 	ID                	x                 	69    	7
+arr               	ID                	arr               	73    	2

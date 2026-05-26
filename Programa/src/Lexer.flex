@@ -73,21 +73,14 @@ import java.io.*;
 
     /**
      * Crea token con valor (literales, identificadores).
-     * Si es ID o literal, se agrega a la tabla de símbolos del scope actual.
+     * Si es ID, se agrega a la tabla de símbolos del scope actual.
      */
     private Symbol symbol(int type, Object value) {
         String tokenName = sym.terminalNames[type];
         String lexema = yytext();
         int lexId = getLexemaId(lexema);
         writeToken(lexId, tokenName, lexema);
-        if (type == sym.ID        ||
-            type == sym.INT_LIT   ||
-            type == sym.FLOAT_LIT ||
-            type == sym.EXP_LIT   ||
-            type == sym.FRAC_LIT  ||
-            type == sym.BOOL_LIT  ||
-            type == sym.CHAR_LIT  ||
-            type == sym.STRING_LIT) {
+        if (type == sym.ID) {
             addSymbol(lexema, tokenName,
                 value != null ? value.toString() : lexema,
                 yyline + 1, yycolumn + 1);
@@ -149,9 +142,11 @@ import java.io.*;
     // El Parser llama a pushScope al entrar a main/funcion/if/do/switch
     // y a popScope al salir
     private static java.util.Stack<String> scopeStack = new java.util.Stack<>();
-    private static int ifCount = 0;
-    private static int doCount = 0;
-    private static int switchCount = 0;
+    public static int ifCount = 0;
+    public static int doCount = 0;
+    public static int switchCount = 0;
+    public static int caseCount = 0;
+    public static int elseCount = 0;
 
     /** Crea un nuevo scope con el nombre dado */
     public static void pushScope(String scopeName) {
@@ -171,23 +166,37 @@ import java.io.*;
     }
 
     /** Scope para if: ifN_nombreFuncion */
-    public static String pushIfScope(String funcName) {
+    public static void pushIfScope(String funcName) {
         ifCount++;
-        String name = "if" + ifCount + "_" + funcName;
+        String name = "if" + ifCount;
         pushScope(name);
-        return name;
+    }
+
+    public static void pushElseScope(String funcName) {
+        elseCount++;
+        String name = "else" + elseCount;
+        pushScope(name);
     }
 
     /** Scope para do-while: doN_nombreFuncion */
     public static void pushDoScope(String funcName) {
         doCount++;
-        pushScope("do" + doCount + "_" + funcName);
+        String name = "do" + doCount;
+        pushScope(name);
     }
 
     /** Scope para switch: switchN_nombreFuncion */
     public static void pushSwitchScope(String funcName) {
+        caseCount = 0;
         switchCount++;
-        pushScope("switch" + switchCount + "_" + funcName);
+        String name = "switch" + switchCount;
+        pushScope(name);
+    }
+
+    public static void pushCaseScope(String funcName, String cName) {
+        caseCount++;
+        String name = "switch" + switchCount "_" + cName + caseCount;
+        pushScope(name);
     }
 
     /**

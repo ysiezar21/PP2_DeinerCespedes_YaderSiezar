@@ -62,9 +62,13 @@ Comentario 1
 	string~str1<-"Mi string 1"!
 	float~fl1!
 	float~fl1<-56.6 / 6//8! ¡¡semantico fl1
-	int~in1<---fl1- -14+ ++in1 % 7 / 15! ¡¡sintactico esparado? <--- semantico fl1, in1
+	int~in1<- --fl1- -14+ ++in1 % 7 / 15! ¡¡sintactico esparado? <--- semantico fl1, in1
 	float~fl2<-3.7 ^ fl1+ <| 45.6 % 76 |> ! ¡¡semantico literal 76
 	
+	if~<|equal<|5,3|>|>|:
+		int~x!
+	:|
+
 ¡¡comentario 2
 	arr <- 10 - arr<<67>><<67*f<||>>> * func1  <| hola, true, "hola mundo", 4.5, 'a' |> ! ¡¡semantico func1, retorno func1
 	arr<<67>><<67*f<||>>> <- 1//1!

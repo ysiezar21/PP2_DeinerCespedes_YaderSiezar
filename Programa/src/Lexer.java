@@ -480,7 +480,7 @@ public class Lexer implements java_cup.runtime.Scanner {
 
     /**
      * Crea token con valor (literales, identificadores).
-     * Si es ID o literal, se agrega a la tabla de símbolos del scope actual.
+     * Si es ID, se agrega a la tabla de símbolos del scope actual.
      */
     private Symbol symbol(int type, Object value) {
         String tokenName = sym.terminalNames[type];
@@ -552,6 +552,7 @@ public class Lexer implements java_cup.runtime.Scanner {
     public static int ifCount = 0;
     public static int doCount = 0;
     public static int switchCount = 0;
+    public static int caseCount = 0;
     public static int elseCount = 0;
 
     /** Crea un nuevo scope con el nombre dado */
@@ -573,12 +574,13 @@ public class Lexer implements java_cup.runtime.Scanner {
 
     /** Scope para if: ifN_nombreFuncion */
     public static void pushIfScope(String funcName) {
+        ifCount++;
         String name = "if" + ifCount;
         pushScope(name);
     }
 
-    /** Scope para else: elseN_nombreFuncion */
     public static void pushElseScope(String funcName) {
+        elseCount++;
         String name = "else" + elseCount;
         pushScope(name);
     }
@@ -586,13 +588,22 @@ public class Lexer implements java_cup.runtime.Scanner {
     /** Scope para do-while: doN_nombreFuncion */
     public static void pushDoScope(String funcName) {
         doCount++;
-        pushScope("do" + doCount + "_" + funcName);
+        String name = "do" + doCount;
+        pushScope(name);
     }
 
     /** Scope para switch: switchN_nombreFuncion */
     public static void pushSwitchScope(String funcName) {
+        caseCount = 0;
         switchCount++;
-        pushScope("switch" + switchCount + "_" + funcName);
+        String name = "switch" + switchCount;
+        pushScope(name);
+    }
+
+    public static void pushCaseScope(String funcName, String cName) {
+        caseCount++;
+        String name = "switch" + switchCount "_" + cName + caseCount;
+        pushScope(name);
     }
 
     /**

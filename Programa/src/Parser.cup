@@ -90,7 +90,10 @@ non terminal return_stmt, io_stmt;
 non terminal expr, expr_log, expr_rel, expr_arit, term, potencia, unario, primario;
 non terminal llamada, arg_lista, literal;
 
-non terminal if_stmt_cond;
+non terminal if_stmt_cond, else_stmt_cond;
+non terminal case_stmt_cond, switch_stmt_cond;
+non terminal do_stmt_cond;
+non terminal close_scope;
 
 // ===== PRECEDENCIA (de menor a mayor) =====
 // Define el orden de evaluación de operadores
@@ -133,26 +136,30 @@ main_proc ::= EMPTY SEPARATOR MAIN LPAR RPAR
     | EMPTY SEPARATOR MAIN LPAR RPAR error
     ;
 
+close_scope ::= {: Lexer.popScope(); :};
+
 // Función: tipo_retorno ~ nombre ~ <| parámetros |> bloque
 // Crea un scope con el nombre de la función
 funcion ::= tipo_retorno:tr SEPARATOR ID:id LPAR param_lista:pl RPAR 
     {:
         currentFunc = id;
+        Lexer.ifCount = 0;
+        Lexer.elseCount = 0;
+        Lexer.switchCount = 0;
+        Lexer.doCount = 0;
         Lexer.pushScope(currentFunc);
     :}
-    bloque:b
-    {:
-        Lexer.popScope();
-    :}
+    bloque close_scope
     | tipo_retorno:tr SEPARATOR ID:id LPAR RPAR 
     {:
         currentFunc = id;
+        Lexer.ifCount = 0;
+        Lexer.elseCount = 0;
+        Lexer.switchCount = 0;
+        Lexer.doCount = 0;
         Lexer.pushScope(currentFunc);
     :}
-    bloque:b
-    {:
-        Lexer.popScope();
-    :}
+    bloque close_scope
     | tipo_retorno SEPARATOR ID LPAR param_lista RPAR error
     | tipo_retorno SEPARATOR ID LPAR RPAR error
     ;
@@ -228,25 +235,40 @@ control ::= if_stmt
 
 if_stmt_cond ::= IF SEPARATOR LPAR expr RPAR 
     {:
-        currentFunc = Lexer.pushIfScope(currentFunc);
+        Lexer.pushIfScope(currentFunc);
 
     :};
 
+else_stmt_cond ::= ELSE SEPARATOR 
+    {:
+        Lexer.pushElseScope(currentFunc);
+    :};
+
 // Condicional if / if-else
-if_stmt ::= if_stmt_cond bloque {: Lexer.popScope(); :}
-    | if_stmt_cond bloque {: Lexer.popScope(); :} ELSE SEPARATOR bloque
+if_stmt ::= if_stmt_cond bloque close_scope
+    | if_stmt_cond bloque {: Lexer.popScope(); :} else_stmt_cond bloque {: Lexer.popScope(); :}
     | IF SEPARATOR LPAR error RPAR bloque
-    | IF SEPARATOR LPAR error RPAR bloque ELSE SEPARATOR bloque
+    | IF SEPARATOR LPAR error RPAR bloque else_stmt_cond bloque {: Lexer.popScope(); :}
     ;
+
+do_stmt_cond ::= DO SEPARATOR 
+    {:
+        Lexer.pushDoScope(currentFunc);
+    :};
 
 // Bucle do-while: do ~ bloque while ~ <| condición |> !
-do_while ::= DO SEPARATOR bloque WHILE SEPARATOR LPAR expr RPAR EXCLAMATION
-    | DO SEPARATOR bloque WHILE SEPARATOR LPAR error RPAR EXCLAMATION
+do_while ::= do_stmt_cond bloque close_scope WHILE SEPARATOR LPAR expr RPAR EXCLAMATION
+    | do_stmt_cond bloque close_scope WHILE SEPARATOR LPAR error RPAR EXCLAMATION
     ;
 
+switch_stmt_cond ::= SWITCH SEPARATOR LPAR expr RPAR 
+    {:
+        pushSwitchScope(currentFunc);
+    :};
+
 // Switch: switch ~ <| expr |> |: cases :|
-switch_stmt ::= SWITCH SEPARATOR LPAR expr RPAR LBLOCK case_lista RBLOCK
-    | SWITCH SEPARATOR LPAR error RPAR LBLOCK case_lista RBLOCK
+switch_stmt ::= switch_stmt_cond {: Lexer.popScope() :} LBLOCK case_lista RBLOCK
+    | switch_stmt_cond {: Lexer.popScope() :} LBLOCK case_lista RBLOCK
     ;
 
 // Lista de casos: opcionalmente termina con default
@@ -259,13 +281,18 @@ case_items ::= case_item
     | case_items case_item
     ;
 
+case_stmt_cond ::= CASE SEPARATOR literal COLON 
+    {:
+        pushCaseScope(currentFunc, "case");
+    :};
+
 // Un caso: case ~ literal : sentencias
-case_item ::= CASE SEPARATOR literal COLON sentencia_lista
+case_item ::= case_stmt_cond sentencia_lista {: Lexer.popScope() :}
     | error COLON sentencia_lista
     ;
 
 // Caso default: default : sentencias (único, al final)
-default_case ::= DEFAULT COLON sentencia_lista
+default_case ::= DEFAULT COLON {: pushCaseScope(currentFunc, "default"); :} sentencia_lista {: Lexer.popScope() :}
     ;
 
 // Sentencia return: return ~ expresión

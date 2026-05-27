@@ -80,11 +80,6 @@ import java.io.*;
         String lexema = yytext();
         int lexId = getLexemaId(lexema);
         writeToken(lexId, tokenName, lexema);
-        if (type == sym.ID) {
-            addSymbol(lexema, tokenName,
-                value != null ? value.toString() : lexema,
-                yyline + 1, yycolumn + 1);
-        }
         return new Symbol(type, yyline + 1, yycolumn + 1, value);
     }
 
@@ -124,7 +119,7 @@ import java.io.*;
                 symbolWriter.println();
                 symbolWriter.println("SCOPE: " + tableName);
                 symbolWriter.println("-------------------------------------------------------------------------------");
-                symbolWriter.println("NOMBRE            \tTIPO              \tVALOR             \tLÍNEA \tCOLUMNA");
+                symbolWriter.println("NOMBRE            \tTIPO              \tPARAMETRO             \tLÍNEA \tCOLUMNA");
                 symbolWriter.println("-------------------------------------------------------------------------------");
                 for (java.util.Map.Entry<String, String[]> entry : table.entrySet()) {
                     String[] info = entry.getValue();
@@ -195,7 +190,7 @@ import java.io.*;
 
     public static void pushCaseScope(String funcName, String cName) {
         caseCount++;
-        String name = "switch" + switchCount "_" + cName + caseCount;
+        String name = "switch" + switchCount + "_" + cName + caseCount;
         pushScope(name);
     }
 
@@ -203,17 +198,25 @@ import java.io.*;
      * Agrega un símbolo a la tabla del scope actual.
      * Solo guarda la primera aparición de cada nombre en cada scope.
      */
-    public static void addSymbol(String name, String tipo, String valor, int line, int col) {
-        if (scopeStack.isEmpty()) return;
-        String fullName = String.join("_", scopeStack);
-        int tableIndex = tableNames.indexOf(fullName);
-        if (tableIndex >= 0) {
-            java.util.LinkedHashMap<String, String[]> table = symbolTables.get(tableIndex);
-            if (!table.containsKey(name)) {
-                table.put(name, new String[]{tipo, valor, String.valueOf(line), String.valueOf(col)});
-            }
+    public static void addSymbol(String name, String tipo, String parametro, int line, int col) {
+    if (scopeStack.isEmpty()) return;
+
+    String fullName = String.join("_", scopeStack);
+    int tableIndex = tableNames.indexOf(fullName);
+
+    if (tableIndex >= 0) {
+        java.util.LinkedHashMap<String, String[]> table = symbolTables.get(tableIndex);
+
+        if (!table.containsKey(name)) {
+            table.put(name, new String[]{
+                tipo,
+                parametro,
+                String.valueOf(line),
+                String.valueOf(col)
+            });
         }
     }
+}
 %}
 
 // ===== DEFINICIONES REGULARES =====

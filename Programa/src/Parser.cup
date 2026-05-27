@@ -81,7 +81,8 @@ terminal String    STRING_LIT, ID;
 
 // ===== NO TERMINALES (reglas de la gramática) =====
 non terminal programa, funcion_lista, funcion, main_proc;
-non terminal tipo_retorno, param_lista, param, tipo;
+non terminal param_lista, param;
+
 non terminal bloque, sentencia_lista, sentencia;
 non terminal decl, asig, arr_access, arr_init;
 non terminal control, if_stmt, do_while, switch_stmt;
@@ -94,6 +95,9 @@ non terminal if_stmt_cond, else_stmt_cond;
 non terminal case_stmt_cond, switch_stmt_cond;
 non terminal do_stmt_cond;
 non terminal close_scope;
+
+non terminal String tipo;
+non terminal String tipo_retorno;
 
 // ===== PRECEDENCIA (de menor a mayor) =====
 // Define el orden de evaluación de operadores
@@ -162,8 +166,21 @@ funcion ::= tipo_retorno:tr SEPARATOR ID:id LPAR param_lista:pl RPAR
     ;
 
 // Tipo de retorno de función
-tipo_retorno ::= INT | FLOAT | CHAR | BOOL | STRING
-    ;
+tipo_retorno ::= INT
+                {: RESULT = "int"; :}
+
+               | FLOAT
+                {: RESULT = "float"; :}
+
+               | CHAR
+                {: RESULT = "char"; :}
+
+               | BOOL
+                {: RESULT = "bool"; :}
+
+               | STRING
+                {: RESULT = "string"; :}
+               ;
 
 // Lista de parámetros: separados por coma
 param_lista ::= param
@@ -171,12 +188,33 @@ param_lista ::= param
     ;
 
 // Parámetro: tipo ~ identificador
-param ::= tipo SEPARATOR ID
-    ;
-
+param ::= tipo:t SEPARATOR ID:id
+{:
+    Lexer.addSymbol(
+        id,
+        t,
+        "Sí",
+        idleft,
+        idright
+    );
+:}
+;
 // Tipos de datos disponibles
-tipo ::= INT | FLOAT | BOOL | CHAR | STRING
-    ;
+tipo ::= INT
+        {: RESULT = "int"; :}
+
+       | FLOAT
+        {: RESULT = "float"; :}
+
+       | BOOL
+        {: RESULT = "bool"; :}
+
+       | CHAR
+        {: RESULT = "char"; :}
+
+       | STRING
+        {: RESULT = "string"; :}
+       ;
 
 // Bloque de código: |: sentencias :| o vacío |: :|
 // Con recuperación de errores interna
@@ -202,12 +240,55 @@ sentencia ::= decl EXCLAMATION
     ;
 
 // Declaración de variable o arreglo
-decl ::= tipo SEPARATOR ID
-    | tipo SEPARATOR ID ASSIGN expr
-    | tipo SEPARATOR ID LBRACKET INT_LIT RBRACKET LBRACKET INT_LIT RBRACKET
-    | tipo SEPARATOR ID LBRACKET INT_LIT RBRACKET LBRACKET INT_LIT RBRACKET ASSIGN LBLOCK arr_init RBLOCK
-    ;
+decl ::= tipo:t SEPARATOR ID:id
+{:
+    Lexer.addSymbol(
+        id,
+        t,
+        "No",
+        idleft,
+        idright
+    );
+:}
 
+| tipo:t SEPARATOR ID:id ASSIGN expr
+{:
+    Lexer.addSymbol(
+        id,
+        t,
+        "No",
+        idleft,
+        idright
+    );
+:}
+
+| tipo:t SEPARATOR ID:id
+  LBRACKET INT_LIT RBRACKET
+  LBRACKET INT_LIT RBRACKET
+{:
+    Lexer.addSymbol(
+        id,
+        t + "[][]",
+        "No",
+        idleft,
+        idright
+    );
+:}
+
+| tipo:t SEPARATOR ID:id
+  LBRACKET INT_LIT RBRACKET
+  LBRACKET INT_LIT RBRACKET
+  ASSIGN LBLOCK arr_init RBLOCK
+{:
+    Lexer.addSymbol(
+        id,
+        t + "[][]",
+        "No",
+        idleft,
+        idright
+    );
+:}
+;
 // Inicialización de arreglo: expresiones separadas por coma, permite sublistas
 arr_init ::= expr
     | LBLOCK arr_init RBLOCK
@@ -260,13 +341,15 @@ do_while ::= do_stmt_cond bloque close_scope WHILE SEPARATOR LPAR expr RPAR EXCL
 
 switch_stmt_cond ::= SWITCH SEPARATOR LPAR expr RPAR 
     {:
-        pushSwitchScope(currentFunc);
+        Lexer.pushSwitchScope(currentFunc);
     :};
 
 // Switch: switch ~ <| expr |> |: cases :|
-switch_stmt ::= switch_stmt_cond {: Lexer.popScope() :} LBLOCK case_lista RBLOCK
-    | switch_stmt_cond {: Lexer.popScope() :} LBLOCK case_lista RBLOCK
-    ;
+switch_stmt ::= switch_stmt_cond LBLOCK case_lista RBLOCK
+{:
+    Lexer.popScope();
+:}
+;
 
 // Lista de casos: opcionalmente termina con default
 case_lista ::= case_items default_case
@@ -280,17 +363,24 @@ case_items ::= case_item
 
 case_stmt_cond ::= CASE SEPARATOR literal COLON 
     {:
-        pushCaseScope(currentFunc, "case");
+        Lexer.pushCaseScope(currentFunc, "case");
     :};
 
 // Un caso: case ~ literal : sentencias
-case_item ::= case_stmt_cond sentencia_lista {: Lexer.popScope() :}
+case_item ::= case_stmt_cond sentencia_lista {: Lexer.popScope(); :}
     | error COLON sentencia_lista
     ;
 
 // Caso default: default : sentencias (único, al final)
-default_case ::= DEFAULT COLON {: pushCaseScope(currentFunc, "default"); :} sentencia_lista {: Lexer.popScope() :}
-    ;
+default_case ::= DEFAULT COLON
+{:
+    Lexer.pushCaseScope(currentFunc, "default");
+:}
+sentencia_lista
+{:
+    Lexer.popScope();
+:}
+;
 
 // Sentencia return: return ~ expresión
 return_stmt ::= RETURN SEPARATOR expr

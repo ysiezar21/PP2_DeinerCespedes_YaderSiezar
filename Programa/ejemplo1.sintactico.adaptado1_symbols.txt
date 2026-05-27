@@ -4,99 +4,88 @@ TABLAS DE SÍMBOLOS POR SCOPE
 
 SCOPE: func1
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-a                 	ID                	a                 	3     	8
-_x22_             	ID                	_x22_             	4     	7
-_miChar_          	ID                	_miChar_          	5     	7
-_miChar2_         	ID                	_miChar2_         	6     	7
-_x30_             	ID                	_x30_             	7     	6
-_x40_             	ID                	_x40_             	8     	7
-_x50_             	ID                	_x50_             	9     	8
-_                 	ID                	_                 	12    	6
-x22               	ID                	x22               	15    	16
-var               	ID                	var               	15    	37
-_i_               	ID                	_i_               	28    	14
-id                	ID                	id                	29    	19
-f                 	ID                	f                 	29    	24
-f1                	ID                	f1                	29    	45
-x                 	ID                	x                 	29    	63
-Holamundo         	ID                	Holamundo         	31    	9
+a                 	float             	No                	3     	8
+_x22_             	char              	No                	4     	7
+_miChar_          	char              	No                	5     	7
+_miChar2_         	char              	No                	6     	7
+_x30_             	int               	No                	7     	6
+_x40_             	bool              	No                	8     	7
+_x50_             	float[][]         	No                	9     	8
+_                 	int               	No                	12    	6
 
 SCOPE: func1_if1
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-y                 	ID                	y                 	16    	7
-x45               	ID                	x45               	17    	8
-x22               	ID                	x22               	18    	3
-ch33              	ID                	ch33              	19    	8
+y                 	int               	No                	16    	7
+x45               	char              	No                	17    	8
+ch33              	char              	No                	19    	8
 
 SCOPE: func1_else1
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-y                 	ID                	y                 	22    	7
-str2              	ID                	str2              	23    	10
+y                 	int               	No                	22    	7
+str2              	string            	No                	23    	10
 
 SCOPE: func1_if2
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-x                 	ID                	x                 	26    	7
+x                 	int               	No                	26    	7
+
+SCOPE: func1_do1
+-------------------------------------------------------------------------------
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
+-------------------------------------------------------------------------------
 
 SCOPE: _func2_
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-b                 	ID                	b                 	37    	6
+b                 	int               	No                	37    	6
 
 SCOPE: _func2__if1
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-x                 	ID                	x                 	40    	7
+x                 	int               	No                	40    	7
 
 SCOPE: _func2__else1
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-z                 	ID                	z                 	43    	7
+z                 	int               	No                	43    	7
 
 SCOPE: _func2__if2
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-x                 	ID                	x                 	47    	7
+x                 	int               	No                	47    	7
 
 SCOPE: _func3_
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-_b1_              	ID                	_b1_              	52    	9
+_b1_              	string            	No                	52    	9
 
 SCOPE: main
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-miChar            	ID                	miChar            	60    	7
-miChar2           	ID                	miChar2           	61    	7
-str1              	ID                	str1              	62    	9
-fl1               	ID                	fl1               	63    	8
-in1               	ID                	in1               	65    	6
-fl2               	ID                	fl2               	66    	8
-arr               	ID                	arr               	73    	14
-f                 	ID                	f                 	73    	28
-func1             	ID                	func1             	73    	38
-hola              	ID                	hola              	73    	48
-miFunc            	ID                	miFunc            	76    	2
-bl0               	ID                	bl0               	77    	7
-bl1               	ID                	bl1               	79    	7
-func2             	ID                	func2             	79    	67
+miChar            	char              	No                	60    	7
+miChar2           	char              	No                	61    	7
+str1              	string            	No                	62    	9
+fl1               	float             	No                	63    	8
+in1               	int               	No                	65    	6
+fl2               	float             	No                	66    	8
+bl0               	bool              	No                	77    	7
+bl1               	bool              	No                	79    	7
 
 SCOPE: main_if1
 -------------------------------------------------------------------------------
-NOMBRE            	TIPO              	VALOR             	LÍNEA 	COLUMNA
+NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-x                 	ID                	x                 	69    	7
-arr               	ID                	arr               	73    	2
+x                 	int               	No                	69    	7

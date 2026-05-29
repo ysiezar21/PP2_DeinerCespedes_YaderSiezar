@@ -1,15 +1,17 @@
 
 float~_mi_  <| int~_dif_, char~_otra_ |> |: ¡¡sintactico 
-	int~_otra_!
+	int~_otra!
 	string~_str_<-"Hola $~&¡¡:|$& |>  mundo"!
+	int~_var_!
+	_var_ <- 10!
 	do~ ¡¡ puede dar sintactico
 	 |: 
 		do~
 		 |: 
 			_var_ <- _var_ - 1! ¡¡semantico
-		 :| while~ <| 1 @ $ <| <|greather_te<|12 , <| 34+35 |>|>|>  |> |>! ¡¡semantico, ver manejo de parentesis y combinacion
+		 :| while~ <| true @ $ <| <|greather_te<|12 , <| 34+35 |>|>|>  |> |>! ¡¡semantico, ver manejo de parentesis y combinacion
 
-		if~  <| _var_ |> 
+		if~  <| greather_te<|12 , 35 |> |> 
 		 |: 
 			cout~<| "entra al if" |> !
 		 :| 
@@ -21,37 +23,41 @@ float~_mi_  <| int~_dif_, char~_otra_ |> |: ¡¡sintactico
 		 |: 
 			switch~<| _otra_ |>  ¡¡semantico
 			 |: 
-				case~1: 
+				case~'1': 
 					cout~<| "!¡¡" |> !
 				
 				case~'2':
-					_otra_ <- 10!
+					_otra_ <- '1'!
 					break!
 				default: ¡¡ sintactico
-					_otra_ <- -10.5 * -1.9!
+					_otra_ <- 'a'!
 			 :| 
-			switch~<| _otra2_ |>  ¡¡semantico
+			switch~<| _otra_ |>  ¡¡semantico
 			 |: 
-				case~10: 
+				case~'0': 
 					cout~<| "un case" |> !
 			 :| 
 		 :| 
 	 :| while~<| $ <|false|>  |> !
-	return~1! ¡¡semantico
+	return~1.2! ¡¡semantico
   :| 
 
  bool~_miOtraFun_  <|  |>   |: 
-	return~-5.6! ¡¡semantico
+	return~false! ¡¡semantico
   :| 
 
 empty~__main__ <|  |>   |: ¡¡ semantico tipo void
-	_arr_<<67+_i_>><<67+_i_>> <- -0.01 + 10e10 * "sd"!  ¡¡ semantico
+	int~_i_!
+	_i_ <- 10!
+	float~_arr_<<40>><<10>>!
+	_arr_<<21>><<67+_i_>> <- -0.01 + 10e10!  ¡¡ semantico
 	bool~_b1_! ¡¡semantico
-	string~_s1_! ¡¡semantico
+	_b1_ <- true!
+	float~_s1_! ¡¡semantico
 	cin~<|_s1_|> ! ¡¡semantico
 	cout~<| _b1_ |> ! ¡¡semantico
 	cout~<| true |> ! ¡¡semantico
 	cout~<| -6//7 |> !
-	return~_s1_!  ¡¡sintactico
-	return~1+_f_ <|  |> !
+	  ¡¡sintactico
+	
  :|

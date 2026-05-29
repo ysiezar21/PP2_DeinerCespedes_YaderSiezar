@@ -20,26 +20,19 @@ import java.io.*;
 
 %{
     // ===== ESCRITURA DE TOKENS =====
-    // Objetivo: Registrar cada token en _tokens.txt
-    // Columnas: ID_LEXEMA, LÍNEA, COLUMNA, TOKEN, LEXEMA
     private static PrintWriter tokenWriter = null;
 
     // ===== IDENTIFICADORES DE LEXEMAS =====
-    // Objetivo: Asignar un ID único a cada lexema diferente
-    // Entrada: lexema (String) -> Salida: ID (Integer, desde 1)
-    // Restricción: Mismo lexema = mismo ID
     private static java.util.LinkedHashMap<String, Integer> lexemaIds =
         new java.util.LinkedHashMap<>();
     private static int nextLexemaId = 1;
 
-    /** Inicializa el archivo de tokens */
     public static void initTokenWriter(String filename) throws IOException {
         tokenWriter = new PrintWriter(new FileWriter(filename));
         tokenWriter.println("ID_LEXEMA \tLÍNEA \tCOLUMNA \tTOKEN                \tLEXEMA");
         tokenWriter.println("-------------------------------------------------------------------------------");
     }
 
-    /** Cierra el archivo de tokens */
     public static void closeTokenWriter() {
         if (tokenWriter != null) {
             tokenWriter.close();
@@ -47,7 +40,6 @@ import java.io.*;
         }
     }
 
-    /** Retorna ID único para un lexema */
     private int getLexemaId(String lexema) {
         if (!lexemaIds.containsKey(lexema)) {
             lexemaIds.put(lexema, nextLexemaId++);
@@ -55,14 +47,6 @@ import java.io.*;
         return lexemaIds.get(lexema);
     }
 
-    // -----------------------------------------------------------------------
-    // Métodos internos del lexer
-    // -----------------------------------------------------------------------
-
-    /**
-     * Crea token sin valor (palabras reservadas, símbolos).
-     * Entrada: tipo de token -> Salida: Symbol con línea y columna
-     */
     private Symbol symbol(int type) {
         String tokenName = sym.terminalNames[type];
         String lexema = yytext();
@@ -71,10 +55,6 @@ import java.io.*;
         return new Symbol(type, yyline + 1, yycolumn + 1);
     }
 
-    /**
-     * Crea token con valor (literales, identificadores).
-     * Si es ID, se agrega a la tabla de símbolos del scope actual.
-     */
     private Symbol symbol(int type, Object value) {
         String tokenName = sym.terminalNames[type];
         String lexema = yytext();
@@ -83,7 +63,6 @@ import java.io.*;
         return new Symbol(type, yyline + 1, yycolumn + 1, value);
     }
 
-    /** Escribe una línea en el archivo de tokens */
     private void writeToken(int lexId, String tokenName, String lexema) {
         if (tokenWriter != null) {
             tokenWriter.printf("%-10d\t%-6d\t%-8d\t%-21s\t%s%n",
@@ -93,21 +72,15 @@ import java.io.*;
     }
 
     // ===== TABLAS DE SÍMBOLOS POR SCOPE =====
-    // Objetivo: Almacenar identificadores y literales agrupados por scope
-    // Entrada: nombre, tipo, valor, línea, columna
-    // Salida: Archivo _symbols.txt con una tabla por cada scope (main, funcion, if, etc.)
-    // Restricción: Solo se guarda la primera aparición de cada símbolo por scope
     private static java.util.ArrayList<java.util.LinkedHashMap<String, String[]>> symbolTables =
         new java.util.ArrayList<>();
     private static java.util.ArrayList<String> tableNames = new java.util.ArrayList<>();
     private static PrintWriter symbolWriter = null;
 
-    /** Inicializa el archivo de símbolos */
     public static void initSymbolWriter(String filename) throws IOException {
         symbolWriter = new PrintWriter(new FileWriter(filename));
     }
 
-    /** Cierra el archivo de símbolos e imprime todas las tablas por scope */
     public static void closeSymbolWriter() {
         if (symbolWriter != null) {
             symbolWriter.println("================================================================================");
@@ -133,17 +106,13 @@ import java.io.*;
     }
 
     // ===== PILA DE SCOPES =====
-    // Objetivo: Controlar el scope actual para las tablas de símbolos
-    // El Parser llama a pushScope al entrar a main/funcion/if/do/switch
-    // y a popScope al salir
     private static java.util.Stack<String> scopeStack = new java.util.Stack<>();
-    public static int ifCount = 0;
-    public static int doCount = 0;
-    public static int switchCount = 0;
-    public static int caseCount = 0;
-    public static int elseCount = 0;
+    public static int ifCount    = 0;
+    public static int doCount    = 0;
+    public static int switchCount= 0;
+    public static int caseCount  = 0;
+    public static int elseCount  = 0;
 
-    /** Crea un nuevo scope con el nombre dado */
     public static void pushScope(String scopeName) {
         scopeStack.push(scopeName);
         String fullName = String.join("_", scopeStack);
@@ -153,114 +122,91 @@ import java.io.*;
         }
     }
 
-    /** Sale del scope actual */
     public static void popScope() {
-        if (!scopeStack.isEmpty()) {
-            scopeStack.pop();
-        }
+        if (!scopeStack.isEmpty()) scopeStack.pop();
     }
 
-    /** Scope para if: ifN_nombreFuncion */
     public static void pushIfScope(String funcName) {
         ifCount++;
-        String name = "if" + ifCount;
-        pushScope(name);
+        pushScope("if" + ifCount);
     }
 
     public static void pushElseScope(String funcName) {
         elseCount++;
-        String name = "else" + elseCount;
-        pushScope(name);
+        pushScope("else" + elseCount);
     }
 
-    /** Scope para do-while: doN_nombreFuncion */
     public static void pushDoScope(String funcName) {
         doCount++;
-        String name = "do" + doCount;
-        pushScope(name);
+        pushScope("do" + doCount);
     }
 
-    /** Scope para switch: switchN_nombreFuncion */
     public static void pushSwitchScope(String funcName) {
         caseCount = 0;
         switchCount++;
-        String name = "switch" + switchCount;
-        pushScope(name);
+        pushScope("switch" + switchCount);
     }
 
     public static void pushCaseScope(String funcName, String cName) {
         caseCount++;
-        String name = "switch" + switchCount + "_" + cName + caseCount;
-        pushScope(name);
+        pushScope("switch" + switchCount + "_" + cName + caseCount);
     }
 
     /**
-     * Agrega un símbolo a la tabla del scope actual.
-     * Solo guarda la primera aparición de cada nombre en cada scope.
+     * Agrega un símbolo a la tabla del scope actual (solo primera aparición).
      */
     public static void addSymbol(String name, String tipo, String parametro, int line, int col) {
-    if (scopeStack.isEmpty()) return;
-
-    String fullName = String.join("_", scopeStack);
-    int tableIndex = tableNames.indexOf(fullName);
-
-    if (tableIndex >= 0) {
-        java.util.LinkedHashMap<String, String[]> table = symbolTables.get(tableIndex);
-
-        if (!table.containsKey(name)) {
-            table.put(name, new String[]{
-                tipo,
-                parametro,
-                String.valueOf(line),
-                String.valueOf(col)
-            });
+        if (scopeStack.isEmpty()) return;
+        String fullName = String.join("_", scopeStack);
+        int tableIndex  = tableNames.indexOf(fullName);
+        if (tableIndex >= 0) {
+            java.util.LinkedHashMap<String, String[]> table = symbolTables.get(tableIndex);
+            if (!table.containsKey(name)) {
+                table.put(name, new String[]{ tipo, parametro,
+                    String.valueOf(line), String.valueOf(col) });
+            }
         }
     }
-}
+
+    /** Resetea contadores de estructuras de control (llamar al entrar a una función). */
+    public static void resetControlCounters() {
+        ifCount     = 0;
+        elseCount   = 0;
+        doCount     = 0;
+        switchCount = 0;
+        caseCount   = 0;
+    }
 %}
 
 // ===== DEFINICIONES REGULARES =====
-// Objetivo: Definir patrones base para reconocer tokens
-// Restricción: El orden de definición en literales es crucial
-//              (más específicos primero: exp > frac > float > int)
-
 LineTerminator  = \r|\n|\r\n
 WhiteSpace      = {LineTerminator} | [ \t\f]
 
-// Comentarios: ¡¡ una línea, {- multilínea -}
 CommentSingle   = "¡¡" [^\r\n]* {LineTerminator}?
 CommentMulti    = "{-" ~"-}"
 
-// Componentes básicos
 letra_sub       = [a-zA-Z_]
 digito          = [0-9]
 digito_no_cero  = [1-9]
 
-// Identificador: letra o _ seguido de letras, dígitos o _
 id              = {letra_sub}({letra_sub}|{digito})*
 
-// Literales numéricos (orden importante)
 int_lit         = {digito}+
 float_lit       = {digito}+"."{digito}+
 int_lit_pos     = {digito_no_cero}{digito}*
 exp_lit         = {digito}+[eE]{int_lit_pos}
 frac_lit        = {digito}+"//"{digito}+
 
-// Carácter: cualquier carácter entre comillas simples
 char_lit        = \'([^\']|\\\')\'
-
-// Cadena: cualquier texto entre comillas dobles
 string_lit      = \"[^\"]*\"
 
 %%
 
-// ===== IGNORAR ESPACIOS Y COMENTARIOS =====
-{WhiteSpace}            { /* ignorar: espacios, tabs, saltos de línea */ }
-{CommentSingle}         { /* ignorar: comentario de una línea */ }
-{CommentMulti}          { /* ignorar: comentario multilínea */ }
+{WhiteSpace}            { /* ignorar */ }
+{CommentSingle}         { /* ignorar */ }
+{CommentMulti}          { /* ignorar */ }
 
 // ===== PALABRAS RESERVADAS =====
-// Objetivo: Reconocer palabras clave del lenguaje
 "empty"                 { return symbol(sym.EMPTY); }
 "int"                   { return symbol(sym.INT); }
 "float"                 { return symbol(sym.FLOAT); }
@@ -292,7 +238,7 @@ string_lit      = \"[^\"]*\"
 // ===== IDENTIFICADOR ESPECIAL =====
 "__main__"              { return symbol(sym.MAIN); }
 
-// ===== SÍMBOLOS COMPUESTOS (antes que simples para coincidencia correcta) =====
+// ===== SÍMBOLOS COMPUESTOS =====
 "<|"                    { return symbol(sym.LPAR); }
 "|>"                    { return symbol(sym.RPAR); }
 "|:"                    { return symbol(sym.LBLOCK); }
@@ -318,7 +264,7 @@ string_lit      = \"[^\"]*\"
 "#"                     { return symbol(sym.OR); }
 "$"                     { return symbol(sym.NOT); }
 
-// ===== LITERALES (orden: más específicos primero) =====
+// ===== LITERALES =====
 {exp_lit}               { return symbol(sym.EXP_LIT, yytext()); }
 {frac_lit}              { return symbol(sym.FRAC_LIT, yytext()); }
 {float_lit}             { return symbol(sym.FLOAT_LIT, Float.parseFloat(yytext())); }
@@ -329,11 +275,10 @@ string_lit      = \"[^\"]*\"
                             return symbol(sym.STRING_LIT, str.substring(1, str.length() - 1));
                         }
 
-// ===== IDENTIFICADOR (después de palabras reservadas) =====
+// ===== IDENTIFICADOR =====
 {id}                    { return symbol(sym.ID, yytext()); }
 
-// ===== ERROR LÉXICO (recuperación en modo pánico) =====
-// Objetivo: Reportar caracteres no reconocidos y continuar el análisis
+// ===== ERROR LÉXICO =====
 [^]                     {
                             String lex = yytext();
                             int lin = yyline + 1, col = yycolumn + 1;

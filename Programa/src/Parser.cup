@@ -1,77 +1,432 @@
 /**
- * Parser.cup - Analizador Sintáctico
- * Objetivo:   Verificar que la secuencia de tokens cumple con la gramática del lenguaje.
- * Entrada:    Tokens del Lexer
- * Salida:     Consola (válido/errores) y archivos _tokens.txt, _symbols.txt
- * Restricción: Recuperación en modo pánico ante errores sintácticos.
+ * Parser.cup - Analizador Sintáctico + Semántico
+ * Objetivo:   Verificar gramática y realizar análisis semántico completo.
+ * Mejoras semánticas implementadas:
+ *   1.  Tabla de funciones (firmas, tipos de parámetros, tipo de retorno)
+ *   2.  Pila semántica unificada (ya no duplica la pila del Lexer)
+ *   3.  Propagación de tipos en TODA la jerarquía de expresiones
+ *   4.  Verificación de return vs tipo de función
+ *   5.  Verificación de llamadas a función (aridad + tipos de argumentos)
+ *   6.  Tipo real de arr_access (basado en tipo declarado del arreglo)
+ *   7.  Declaración con inicialización verifica compatibilidad de tipos
+ *   8.  Parámetros se registran también en la pila semántica
+ *   9.  cin verifica que la variable exista y sea de tipo simple
+ *  10.  switch verifica que la expresión sea de tipo comparable con los case
+ *  11.  Operadores lógicos solo aceptan bool
+ *  12.  NOT solo acepta bool
+ *  13.  Operadores relacionales de orden (less_t, etc.) solo aceptan numéricos
+ *  14.  equal/n_equal verifican que ambos operandos sean del mismo tipo base
+ *  15.  Incremento/decremento solo sobre variables numéricas declaradas
+ * NUEVO:
+ *  16.  Clase ExprInfo: propaga tipo + valor constante (Integer) por toda la
+ *       jerarquía de expresiones.
+ *  17.  arrayDimensions: mapa nombre -> int[]{filas, columnas} para arreglos 2D.
+ *  18.  arr_access_expr / arr_access_stmt: cuando el índice es una constante
+ *       entera conocida en tiempo de compilación, verifica que esté dentro del
+ *       rango [0 .. dim-1] y emite un error semántico detallado si no lo está.
+ *  19.  VarInfo + lookupAndCheckInit: cada variable registra un flag
+ *       'initialized'. Usar una variable no inicializada en cualquier
+ *       expresión, ++/--, cin o cout emite error semántico. La inicialización
+ *       se produce por: declaración con valor, parámetro de función, arreglo
+ *       declarado, asignación (<-) o lectura con cin.
  */
 
 import java_cup.runtime.*;
+import java.util.*;
 
 parser code {:
 
-    /** Contador de errores sintácticos encontrados */
-    public int errorCount = 0;
-    
-    /** Nombre de la función actual para nombrar los scopes */
+    // =========================================================================
+    // CONTADORES DE ERRORES
+    // =========================================================================
+    public int errorCount    = 0;
+    public int semErrorCount = 0;
+
+    // =========================================================================
+    // NOMBRE DE FUNCIÓN ACTUAL (para nombrar scopes en el Lexer)
+    // =========================================================================
     private String currentFunc = "main";
 
+    // =========================================================================
+    // ExprInfo — envuelve tipo semántico + valor constante opcional.
+    //
+    // La propagación de constantes es SOLO para int (los únicos índices
+    // válidos de arreglo). Si una sub-expresión no es constante, constValue
+    // queda null y la verificación de límites se omite (runtime check).
+    // =========================================================================
+    static class ExprInfo {
+        /** Tipo semántico: "int", "float", "bool", "char", "string", "error" */
+        final String  type;
+
+        /**
+         * Valor entero constante conocido en tiempo de compilación.
+         * null  → no constante (variable, llamada a función, float, etc.)
+         */
+        final Integer constValue;
+
+        ExprInfo(String type) {
+            this.type       = type;
+            this.constValue = null;
+        }
+
+        ExprInfo(String type, Integer constValue) {
+            this.type       = type;
+            this.constValue = constValue;
+        }
+
+        /** Construye un ExprInfo de tipo "error" sin valor constante. */
+        static ExprInfo error() { return new ExprInfo("error"); }
+
+        @Override public String toString() {
+            return constValue != null
+                ? type + "(" + constValue + ")"
+                : type;
+        }
+    }
+
+    // =========================================================================
+    // DIMENSIONES DE ARREGLOS 2D
+    // Clave  : nombre de la variable (String)
+    // Valor  : int[]{ filas, columnas }
+    //
+    // Se llena en las reglas 'decl' que declaran arreglos bidimensionales.
+    // Se consulta en arr_access_expr y arr_access_stmt para la verificación
+    // de límites.
+    // =========================================================================
+    private Map<String, int[]> arrayDimensions = new HashMap<>();
+
     /**
-     * Manejo de error sintáctico recuperable.
-     * Reporta el error y continúa el análisis.
+     * Registra las dimensiones de un arreglo recién declarado.
+     * Si el mismo nombre ya estaba registrado (re-declaración en otro scope),
+     * se sobreescribe con las nuevas dimensiones.
      */
-    @Override
-    public void syntax_error(Symbol cur_token) {
-        errorCount++;
-        int line   = cur_token.left;
-        int column = cur_token.right;
-        String lexema = (cur_token.value != null) ? cur_token.value.toString() : "";
-        System.err.println("Error sintáctico en línea " + line +
-                           ", columna " + column +
-                           ": token inesperado '" + lexema + "'");
+    private void registerArrayDimensions(String name, int rows, int cols) {
+        arrayDimensions.put(name, new int[]{ rows, cols });
     }
 
     /**
-     * Manejo de error sintáctico irrecuperable.
-     * Reporta el error y detiene el análisis.
+     * Devuelve las dimensiones del arreglo o null si no se conocen.
+     * (puede ser null si el arreglo fue declarado sin dimensiones literales,
+     *  lo que en esta gramática no ocurre, pero se maneja defensivamente)
      */
+    private int[] getArrayDimensions(String name) {
+        return arrayDimensions.get(name);
+    }
+
+    /**
+     * Verifica que un índice constante esté dentro del rango [0 .. dim-1].
+     * Emite error semántico si está fuera de rango.
+     *
+     * @param arrName  nombre del arreglo (para el mensaje)
+     * @param axisName "fila" o "columna" (para el mensaje)
+     * @param idx      valor constante del índice
+     * @param dim      dimensión declarada
+     * @param line     línea del acceso (para el mensaje)
+     * @param col      columna del acceso (para el mensaje)
+     */
+    private void checkIndexBound(String arrName, String axisName,
+                                  int idx, int dim, int line, int col) {
+        if (idx < 0 || idx >= dim) {
+            semantic_error(line, col,
+                "Índice de " + axisName + " fuera de límites en arreglo '" + arrName +
+                "': índice " + idx + " está fuera del rango [0.." + (dim - 1) + "]");
+        }
+    }
+
+    // =========================================================================
+    // TABLA DE FUNCIONES
+    // =========================================================================
+    private static class FunctionInfo {
+        String       returnType;
+        List<String> paramTypes = new ArrayList<>();
+        List<String> paramNames = new ArrayList<>();
+
+        FunctionInfo(String returnType) { this.returnType = returnType; }
+
+        void addParam(String name, String type) {
+            paramNames.add(name);
+            paramTypes.add(type);
+        }
+
+        @Override public String toString() {
+            return returnType + "(" + String.join(", ", paramTypes) + ")";
+        }
+    }
+
+    private Map<String, FunctionInfo> functionTable  = new HashMap<>();
+    private FunctionInfo              currentFuncInfo = null;
+
+    // =========================================================================
+    // PILA SEMÁNTICA DE ÁMBITOS
+    // =========================================================================
+
+    /**
+     * VarInfo — entrada de la tabla de símbolos semántica.
+     *
+     * Guarda el tipo de la variable y si ya tiene un valor asignado.
+     *
+     * Reglas de inicialización:
+     *   - Declaración sin valor (tipo ~ id)          → initialized = false
+     *   - Declaración con valor (tipo ~ id <- expr)  → initialized = true
+     *   - Parámetro de función                       → initialized = true
+     *   - Arreglo 2D (con o sin init literal)        → initialized = true
+     *     (los elementos individuales se consideran accesibles; su valor
+     *      concreto es responsabilidad del programador)
+     *   - Asignación posterior (id <- expr)          → marca initialized = true
+     *   - cin <| id |>                               → marca initialized = true
+     */
+    static class VarInfo {
+        final String type;
+        boolean initialized;
+
+        VarInfo(String type, boolean initialized) {
+            this.type        = type;
+            this.initialized = initialized;
+        }
+    }
+
+    private Deque<Map<String, VarInfo>> semanticStack  = new ArrayDeque<>();
+    private Deque<String>               scopeNames     = new ArrayDeque<>();
+    private String                      currentReturnType = null;
+    private Deque<String>               switchExprTypes   = new ArrayDeque<>();
+
+    private void enterScope(String name) {
+        semanticStack.push(new HashMap<>());
+        scopeNames.push(name);
+    }
+
+    private void exitScope() {
+        if (!semanticStack.isEmpty()) {
+            semanticStack.pop();
+            scopeNames.pop();
+        }
+    }
+
+    /**
+     * Declara un símbolo en el ámbito actual.
+     * Error si el nombre ya existe en ESE nivel.
+     *
+     * @param initialized true si se declara con valor inicial (o es parámetro/arreglo).
+     */
+    private void declareSymbol(String name, String type, boolean initialized,
+                                int line, int col) {
+        if (semanticStack.isEmpty()) {
+            semantic_error(line, col, "Declaración fuera de ámbito: '" + name + "'");
+            return;
+        }
+        Map<String, VarInfo> current = semanticStack.peek();
+        if (current.containsKey(name)) {
+            semantic_error(line, col,
+                "Símbolo '" + name + "' ya declarado en este ámbito");
+        } else {
+            current.put(name, new VarInfo(type, initialized));
+        }
+    }
+
+    /**
+     * Sobrecarga de compatibilidad: declara sin valor inicial.
+     * Equivale a declareSymbol(name, type, false, line, col).
+     */
+    private void declareSymbol(String name, String type, int line, int col) {
+        declareSymbol(name, type, false, line, col);
+    }
+
+    /**
+     * Marca una variable ya declarada como inicializada.
+     * Busca desde el ámbito más interno; no hace nada si no la encuentra
+     * (ese error ya lo detecta lookupSymbol / asig).
+     */
+    private void markInitialized(String name) {
+        for (Map<String, VarInfo> scope : semanticStack) {
+            VarInfo vi = scope.get(name);
+            if (vi != null) {
+                vi.initialized = true;
+                return;
+            }
+        }
+    }
+
+    /**
+     * Busca el tipo de un símbolo desde el ámbito más interno al más externo.
+     * Retorna null si no existe.
+     */
+    private String lookupSymbol(String name) {
+        for (Map<String, VarInfo> scope : semanticStack) {
+            VarInfo vi = scope.get(name);
+            if (vi != null) return vi.type;
+        }
+        return null;
+    }
+
+    /**
+     * Busca un símbolo y verifica que esté inicializado.
+     * - Si no existe  → error "no declarada"       → retorna null
+     * - Si no init    → error "sin valor asignado"  → retorna el tipo (análisis continúa)
+     * - Si ok         → retorna el tipo
+     */
+    private String lookupAndCheckInit(String name, int line, int col) {
+        for (Map<String, VarInfo> scope : semanticStack) {
+            VarInfo vi = scope.get(name);
+            if (vi != null) {
+                if (!vi.initialized) {
+                    semantic_error(line, col,
+                        "Variable '" + name + "' se usa sin haber sido inicializada");
+                }
+                return vi.type;
+            }
+        }
+        // No existe en ningún scope → error de declaración
+        semantic_error(line, col, "Variable '" + name + "' no declarada");
+        return null;
+    }
+
+    // =========================================================================
+    // HELPERS DE TIPOS
+    // =========================================================================
+
+    private boolean isNumeric(String type) {
+        return "int".equals(type) || "float".equals(type);
+    }
+
+    private boolean isArrayType(String type) {
+        return type != null && type.contains("[");
+    }
+
+    private String baseType(String type) {
+        if (type == null) return null;
+        int bracket = type.indexOf('[');
+        return bracket >= 0 ? type.substring(0, bracket) : type;
+    }
+
+    /**
+     * Compatibilidad de asignación / paso de argumento.
+     * Mismo tipo exacto, o promoción implícita int -> float.
+     */
+    private boolean isCompatible(String exprType, String varType) {
+        if (exprType == null || varType == null) return false;
+        if ("error".equals(exprType) || "error".equals(varType)) return true;
+        if (exprType.equals(varType)) return true;
+        if ("int".equals(exprType) && "float".equals(varType)) return true;
+        return false;
+    }
+
+    /** Tipo resultado de una operación aritmética binaria. */
+    private String resultType(String t1, String t2) {
+        if (t1 == null || t2 == null)             return "error";
+        if ("error".equals(t1) || "error".equals(t2)) return "error";
+        if ("float".equals(t1) || "float".equals(t2)) return "float";
+        if ("int".equals(t1)   && "int".equals(t2))   return "int";
+        return "error";
+    }
+
+    /** ¿Son los tipos comparables con equal/n_equal? */
+    private boolean isEqualityCompatible(String t1, String t2) {
+        if (t1 == null || t2 == null) return false;
+        if ("error".equals(t1) || "error".equals(t2)) return true;
+        if (t1.equals(t2)) return true;
+        if (isNumeric(t1) && isNumeric(t2)) return true;
+        return false;
+    }
+
+    // =========================================================================
+    // ACUMULADOR DE ARGUMENTOS (para llamadas a función)
+    // =========================================================================
+    private Deque<List<String>> argStack = new ArrayDeque<>();
+
+    private void beginArgList()           { argStack.push(new ArrayList<>()); }
+    private void addArg(String type)      { if (!argStack.isEmpty()) argStack.peek().add(type); }
+    private List<String> endArgList()     {
+        return argStack.isEmpty() ? Collections.emptyList() : argStack.pop();
+    }
+
+    // =========================================================================
+    // VERIFICACIÓN DE LLAMADAS A FUNCIÓN
+    // =========================================================================
+    private String checkCall(String funcName, List<String> argTypes, int line, int col) {
+        FunctionInfo info = functionTable.get(funcName);
+        if (info == null) {
+            semantic_error(line, col, "Función '" + funcName + "' no declarada");
+            return "error";
+        }
+        if (argTypes.size() != info.paramTypes.size()) {
+            semantic_error(line, col,
+                "Función '" + funcName + "' espera " + info.paramTypes.size() +
+                " argumento(s), se pasaron " + argTypes.size());
+            return info.returnType;
+        }
+        for (int i = 0; i < argTypes.size(); i++) {
+            if (!isCompatible(argTypes.get(i), info.paramTypes.get(i))) {
+                semantic_error(line, col,
+                    "Argumento " + (i + 1) + " de '" + funcName +
+                    "': se esperaba " + info.paramTypes.get(i) +
+                    " pero se obtuvo " + argTypes.get(i));
+            }
+        }
+        return info.returnType;
+    }
+
+    // =========================================================================
+    // ERRORES SINTÁCTICOS
+    // =========================================================================
+    @Override
+    public void syntax_error(Symbol cur_token) {
+        errorCount++;
+        int    line   = cur_token.left;
+        int    column = cur_token.right;
+        String lex    = (cur_token.value != null) ? cur_token.value.toString() : "";
+        System.err.println("Error sintáctico en línea " + line +
+                           ", columna " + column +
+                           ": token inesperado '" + lex + "'");
+    }
+
     @Override
     public void unrecovered_syntax_error(Symbol cur_token) throws Exception {
         errorCount++;
-        int line   = cur_token.left;
-        int column = cur_token.right;
-        String lexema = (cur_token.value != null) ? cur_token.value.toString() : "";
+        int    line   = cur_token.left;
+        int    column = cur_token.right;
+        String lex    = (cur_token.value != null) ? cur_token.value.toString() : "";
         System.err.println("Error sintáctico irrecuperable en línea " + line +
                            ", columna " + column +
-                           ": '" + lexema + "'. Se detiene el análisis.");
+                           ": '" + lex + "'. Se detiene el análisis.");
+    }
+
+    // =========================================================================
+    // ERRORES SEMÁNTICOS
+    // =========================================================================
+    public void semantic_error(Symbol token, String msg) {
+        semErrorCount++;
+        int line   = (token != null) ? token.left  : 0;
+        int column = (token != null) ? token.right : 0;
+        System.err.println("Error semántico en línea " + line +
+                           ", columna " + column + ": " + msg);
+    }
+
+    public void semantic_error(int line, int col, String msg) {
+        semErrorCount++;
+        System.err.println("Error semántico en línea " + line +
+                           ", columna " + col + ": " + msg);
     }
 
 :}
 
-// ===== TERMINALES (tokens del Lexer) =====
+// =============================================================================
+// TERMINALES
+// =============================================================================
 
-// Palabras reservadas del lenguaje
 terminal EMPTY, INT, FLOAT, CHAR, BOOL, STRING;
 terminal IF, ELSE, DO, WHILE, SWITCH, CASE, DEFAULT;
 terminal RETURN, BREAK, CIN, COUT;
 terminal MAIN;
 
-// Operadores relacionales: equal, n_equal, less_t, less_te, greather_t, greather_te
-terminal EQUAL, N_EQUAL, LESS_T, LESS_TE;
-terminal GREATHER_T, GREATHER_TE;
+terminal EQUAL, N_EQUAL, LESS_T, LESS_TE, GREATHER_T, GREATHER_TE;
 
-// Delimitadores: <| |>, |: :|, << >>, <-, ~, !, ,, :
 terminal LPAR, RPAR, LBLOCK, RBLOCK, LBRACKET, RBRACKET;
 terminal ASSIGN, SEPARATOR, EXCLAMATION, COMMA, COLON;
 
-// Operadores aritméticos: +, -, *, /, %, ^
 terminal PLUS, MINUS, TIMES, DIVIDE, MOD, POWER;
-
-// Operadores unarios y lógicos: ++, --, @, #, $
 terminal INCREMENT, DECREMENT;
 terminal AND, OR, NOT;
 
-// Literales con su tipo de dato asociado
 terminal Integer   INT_LIT;
 terminal Float     FLOAT_LIT;
 terminal String    EXP_LIT, FRAC_LIT;
@@ -79,18 +434,31 @@ terminal Boolean   BOOL_LIT;
 terminal Character CHAR_LIT;
 terminal String    STRING_LIT, ID;
 
-// ===== NO TERMINALES (reglas de la gramática) =====
+// =============================================================================
+// NO TERMINALES
+// =============================================================================
+
 non terminal programa, funcion_lista, funcion, main_proc;
-non terminal param_lista, param;
+non terminal param_lista;
+non terminal String param;
 
 non terminal bloque, sentencia_lista, sentencia;
-non terminal decl, asig, arr_access, arr_init;
+non terminal decl, asig, arr_access_stmt;
+non terminal arr_init;
 non terminal control, if_stmt, do_while, switch_stmt;
 non terminal case_lista, case_item, case_items, default_case;
 non terminal return_stmt, io_stmt;
-non terminal expr, expr_log, expr_rel, expr_arit, term, potencia, unario, primario;
-non terminal llamada, arg_lista, literal;
+non terminal arg_lista;
 
+// ---- Expresiones: ahora todas retornan ExprInfo (tipo + constante opcional) ----
+non terminal ExprInfo arr_access_expr;
+non terminal ExprInfo expr, expr_log, expr_rel, expr_arit, term, potencia, unario, primario;
+non terminal ExprInfo literal;
+
+// Llamadas a función
+non terminal ExprInfo llamada;
+
+// Auxiliares de ámbito
 non terminal if_stmt_cond, else_stmt_cond;
 non terminal case_stmt_cond, switch_stmt_cond;
 non terminal do_stmt_cond;
@@ -100,127 +468,135 @@ non terminal func_stmt_cond;
 non terminal String tipo;
 non terminal String tipo_retorno;
 
-// ===== PRECEDENCIA (de menor a mayor) =====
-// Define el orden de evaluación de operadores
-precedence left OR;             // # (disyunción)
-precedence left AND;            // @ (conjunción)
-precedence right NOT;           // $ (negación)
-precedence left EQUAL, N_EQUAL, LESS_T, LESS_TE, GREATHER_T, GREATHER_TE;
-precedence left PLUS, MINUS;    // +, -
-precedence left TIMES, DIVIDE, MOD; // *, /, %
-precedence right POWER;         // ^ (asociativo derecha)
-precedence right INCREMENT, DECREMENT; // ++, --
+// =============================================================================
+// PRECEDENCIA
+// =============================================================================
 
-// ===== SÍMBOLO INICIAL =====
+precedence left OR;
+precedence left AND;
+precedence right NOT;
+precedence left EQUAL, N_EQUAL, LESS_T, LESS_TE, GREATHER_T, GREATHER_TE;
+precedence left PLUS, MINUS;
+precedence left TIMES, DIVIDE, MOD;
+precedence right POWER;
+precedence right INCREMENT, DECREMENT;
+
+// =============================================================================
+// SÍMBOLO INICIAL
+// =============================================================================
+
 start with programa;
 
-// ===== REGLAS GRAMATICALES =====
+// =============================================================================
+// REGLAS GRAMATICALES
+// =============================================================================
 
-// Programa: lista de funciones seguida del main, o solo main
 programa ::= funcion_lista main_proc
     | main_proc
     | error
     ;
 
-// Lista de funciones: una o más funciones
 funcion_lista ::= funcion
     | funcion_lista funcion
     ;
 
-// Procedimiento principal: empty ~ __main__ <| |> bloque
-// Crea el scope "main" para la tabla de símbolos
-main_proc ::= EMPTY SEPARATOR MAIN LPAR RPAR 
+// --------------------------------------------------------------------------
+// MAIN
+// --------------------------------------------------------------------------
+
+main_proc ::=
+    EMPTY SEPARATOR MAIN LPAR RPAR
     {:
-        currentFunc = "main";
+        currentFunc       = "main";
+        currentReturnType = null;
         Lexer.pushScope("main");
+        enterScope("main");
     :}
     bloque close_scope
     | EMPTY SEPARATOR MAIN LPAR RPAR error
     ;
 
-close_scope ::= {: Lexer.popScope(); :};
+close_scope ::=
+    {: Lexer.popScope(); exitScope(); :}
+    ;
+
+// --------------------------------------------------------------------------
+// FUNCIONES
+// --------------------------------------------------------------------------
 
 func_stmt_cond ::= tipo_retorno:tr SEPARATOR ID:id
     {:
-        currentFunc = id;
-        Lexer.ifCount = 0;
-        Lexer.elseCount = 0;
-        Lexer.switchCount = 0;
-        Lexer.doCount = 0;
+        currentFunc       = id;
+        currentReturnType = tr;
+        Lexer.resetControlCounters();
         Lexer.pushScope(currentFunc);
+        enterScope(currentFunc);
+        if (functionTable.containsKey(id)) {
+            semantic_error(idleft, idright,
+                "Función '" + id + "' ya declarada anteriormente");
+        } else {
+            currentFuncInfo = new FunctionInfo(tr);
+            functionTable.put(id, currentFuncInfo);
+        }
     :};
 
-// Función: tipo_retorno ~ nombre ~ <| parámetros |> bloque
-// Crea un scope con el nombre de la función
 funcion ::= func_stmt_cond LPAR param_lista RPAR bloque close_scope
     | func_stmt_cond LPAR param_lista RPAR error close_scope
     ;
 
-// Tipo de retorno de función
-tipo_retorno ::= INT
-                {: RESULT = "int"; :}
+// --------------------------------------------------------------------------
+// TIPO DE RETORNO
+// --------------------------------------------------------------------------
 
-               | FLOAT
-                {: RESULT = "float"; :}
-
-               | CHAR
-                {: RESULT = "char"; :}
-
-               | BOOL
-                {: RESULT = "bool"; :}
-
-               | STRING
-                {: RESULT = "string"; :}
+tipo_retorno ::= INT    {: RESULT = "int";    :}
+               | FLOAT  {: RESULT = "float";  :}
+               | CHAR   {: RESULT = "char";   :}
+               | BOOL   {: RESULT = "bool";   :}
+               | STRING {: RESULT = "string"; :}
                ;
 
-// Lista de parámetros: separados por coma
+// --------------------------------------------------------------------------
+// PARÁMETROS
+// --------------------------------------------------------------------------
+
 param_lista ::= param
     | param_lista COMMA param
-    | /* Vacio */
+    | /* vacío */
     ;
 
-// Parámetro: tipo ~ identificador
 param ::= tipo:t SEPARATOR ID:id
-{:
-    Lexer.addSymbol(
-        id,
-        t,
-        "Sí",
-        idleft,
-        idright
-    );
-:}
-;
-// Tipos de datos disponibles
-tipo ::= INT
-        {: RESULT = "int"; :}
+    {:
+        Lexer.addSymbol(id, t, "Sí", idleft, idright);
+        declareSymbol(id, t, true, idleft, idright);   // parámetro → siempre inicializado
+        if (currentFuncInfo != null) currentFuncInfo.addParam(id, t);
+        RESULT = t;
+    :}
+    ;
 
-       | FLOAT
-        {: RESULT = "float"; :}
+// --------------------------------------------------------------------------
+// TIPOS
+// --------------------------------------------------------------------------
 
-       | BOOL
-        {: RESULT = "bool"; :}
-
-       | CHAR
-        {: RESULT = "char"; :}
-
-       | STRING
-        {: RESULT = "string"; :}
+tipo ::= INT    {: RESULT = "int";    :}
+       | FLOAT  {: RESULT = "float";  :}
+       | BOOL   {: RESULT = "bool";   :}
+       | CHAR   {: RESULT = "char";   :}
+       | STRING {: RESULT = "string"; :}
        ;
 
-// Bloque de código: |: sentencias :| o vacío |: :|
-// Con recuperación de errores interna
+// --------------------------------------------------------------------------
+// BLOQUES Y SENTENCIAS
+// --------------------------------------------------------------------------
+
 bloque ::= LBLOCK sentencia_lista RBLOCK
     | LBLOCK RBLOCK
     | LBLOCK error RBLOCK
     ;
 
-// Lista de sentencias: una o más
 sentencia_lista ::= sentencia
     | sentencia_lista sentencia
     ;
 
-// Sentencia: termina con ! (excepto estructuras de control y bloques)
 sentencia ::= decl EXCLAMATION
     | asig EXCLAMATION
     | expr EXCLAMATION
@@ -231,233 +607,690 @@ sentencia ::= decl EXCLAMATION
     | bloque
     ;
 
-// Declaración de variable o arreglo
-decl ::= tipo:t SEPARATOR ID:id
+// --------------------------------------------------------------------------
+// DECLARACIÓN DE VARIABLES
+// --------------------------------------------------------------------------
+
+decl ::=
+    // tipo ~ id   → no inicializada
+    tipo:t SEPARATOR ID:id
     {:
-        Lexer.addSymbol(
-            id,
-            t,
-            "No",
-            idleft,
-            idright
-        );
+        Lexer.addSymbol(id, t, "No", idleft, idright);
+        declareSymbol(id, t, false, idleft, idright);
     :}
 
-    | tipo:t SEPARATOR ID:id ASSIGN expr
+    // tipo ~ id <- expr   → inicializada con el valor de la expresión
+    | tipo:t SEPARATOR ID:id ASSIGN expr:e
     {:
-        Lexer.addSymbol(
-            id,
-            t,
-            "No",
-            idleft,
-            idright
-        );
+        Lexer.addSymbol(id, t, "No", idleft, idright);
+        declareSymbol(id, t, true, idleft, idright);
+        if (!isCompatible(e.type, t)) {
+            semantic_error(idleft, idright,
+                "Inicialización de '" + id + "': se esperaba " + t +
+                " pero se obtuvo " + e.type);
+        }
     :}
 
+    // tipo ~ id << a >> << b >>   (arreglo 2D sin inicialización literal)
+    // Los arreglos se marcan como inicializados: el acceso a elementos
+    // concretos es responsabilidad del programador.
     | tipo:t SEPARATOR ID:id
-    LBRACKET INT_LIT:a RBRACKET
-    LBRACKET INT_LIT:b RBRACKET
+      LBRACKET INT_LIT:a RBRACKET
+      LBRACKET INT_LIT:b RBRACKET
     {:
-        Lexer.addSymbol(
-            id,
-            t + "[" + a.toString() + "][" + b.toString() + "]",
-            "No",
-            idleft,
-            idright
-        );
+        String arrType = t + "[" + a + "][" + b + "]";
+        Lexer.addSymbol(id, arrType, "No", idleft, idright);
+        declareSymbol(id, arrType, true, idleft, idright);
+        registerArrayDimensions(id, a.intValue(), b.intValue());
     :}
 
+    // tipo ~ id << a >> << b >> <- |: arr_init :|   (arreglo 2D con inicialización)
     | tipo:t SEPARATOR ID:id
-    LBRACKET INT_LIT:a RBRACKET
-    LBRACKET INT_LIT:b RBRACKET
-    ASSIGN LBLOCK arr_init RBLOCK
+      LBRACKET INT_LIT:a RBRACKET
+      LBRACKET INT_LIT:b RBRACKET
+      ASSIGN LBLOCK arr_init RBLOCK
     {:
-        Lexer.addSymbol(
-            id,
-            t + "[" + a.toString() + "][" + b.toString() + "]",
-            "No",
-            idleft,
-            idright
-        );
+        String arrType = t + "[" + a + "][" + b + "]";
+        Lexer.addSymbol(id, arrType, "No", idleft, idright);
+        declareSymbol(id, arrType, true, idleft, idright);
+        registerArrayDimensions(id, a.intValue(), b.intValue());
     :}
     ;
-// Inicialización de arreglo: expresiones separadas por coma, permite sublistas
+
+// Inicialización de arreglo
 arr_init ::= expr
     | LBLOCK arr_init RBLOCK
     | arr_init COMMA expr
     | arr_init COMMA LBLOCK arr_init RBLOCK
     ;
 
-// Asignación a variable o elemento de arreglo
-asig ::= ID ASSIGN expr
-    | arr_access ASSIGN expr
-    ;
+// --------------------------------------------------------------------------
+// ASIGNACIÓN — usa e.type
+// --------------------------------------------------------------------------
 
-// Acceso a arreglo bidimensional: id << expr >> << expr >>
-arr_access ::= ID LBRACKET expr RBRACKET LBRACKET expr RBRACKET
-    ;
-
-// Estructuras de control
-control ::= if_stmt
-    | do_while
-    | switch_stmt
-    ;
-
-if_stmt_cond ::= IF SEPARATOR LPAR expr RPAR 
+asig ::=
+    // Variable simple
+    ID:id ASSIGN expr:e
     {:
+        String tipoVar = lookupSymbol(id);
+        if (tipoVar == null) {
+            semantic_error(idleft, idright,
+                "Variable '" + id + "' no declarada");
+        } else if (isArrayType(tipoVar)) {
+            semantic_error(idleft, idright,
+                "'" + id + "' es un arreglo; use indexación para asignar elementos");
+        } else if (!isCompatible(e.type, tipoVar)) {
+            semantic_error(idleft, idright,
+                "Asignación a '" + id + "': se esperaba " + tipoVar +
+                " pero se obtuvo " + e.type);
+        } else {
+            // Asignación válida → la variable queda inicializada
+            markInitialized(id);
+        }
+    :}
+
+    // Elemento de arreglo
+    | arr_access_expr:a ASSIGN expr:e
+    {:
+        if (!isCompatible(e.type, a.type)) {
+            semantic_error(0, 0,
+                "Asignación a elemento de arreglo: se esperaba " + a.type +
+                " pero se obtuvo " + e.type);
+        }
+    :}
+    ;
+
+// --------------------------------------------------------------------------
+// ACCESO A ARREGLO
+// --------------------------------------------------------------------------
+
+/**
+ * arr_access_expr — retorna ExprInfo cuyo .type es el tipo base del arreglo.
+ *
+ * NUEVO: si i1 o i2 son constantes enteras (constValue != null), se verifica
+ * que estén dentro del rango [0 .. dim-1].  Si el índice no es constante
+ * se omite la verificación (se hará en tiempo de ejecución).
+ */
+arr_access_expr ::= ID:id LBRACKET expr:i1 RBRACKET LBRACKET expr:i2 RBRACKET
+    {:
+        // --- Verificación de tipo de índices ---
+        if (!"int".equals(i1.type)) {
+            semantic_error(idleft, idright,
+                "Índice de arreglo debe ser int, se obtuvo " + i1.type);
+        }
+        if (!"int".equals(i2.type)) {
+            semantic_error(idleft, idright,
+                "Índice de arreglo debe ser int, se obtuvo " + i2.type);
+        }
+
+        // --- Resolución de tipo base ---
+        String arrType = lookupAndCheckInit(id, idleft, idright);
+        if (arrType == null) {
+            RESULT = ExprInfo.error();
+        } else if (!isArrayType(arrType)) {
+            semantic_error(idleft, idright,
+                "'" + id + "' no es un arreglo");
+            RESULT = ExprInfo.error();
+        } else {
+            RESULT = new ExprInfo(baseType(arrType));
+
+            // --- NUEVO: verificación de límites en índices constantes ---
+            int[] dims = getArrayDimensions(id);
+            if (dims != null) {
+                // Verificar índice de fila
+                if ("int".equals(i1.type) && i1.constValue != null) {
+                    checkIndexBound(id, "fila",    i1.constValue, dims[0], idleft, idright);
+                }
+                // Verificar índice de columna
+                if ("int".equals(i2.type) && i2.constValue != null) {
+                    checkIndexBound(id, "columna", i2.constValue, dims[1], idleft, idright);
+                }
+            }
+        }
+    :}
+    ;
+
+/**
+ * arr_access_stmt — versión para el lado izquierdo de una asignación.
+ * Misma lógica de verificación de límites que arr_access_expr.
+ */
+arr_access_stmt ::= ID:id LBRACKET expr:i1 RBRACKET LBRACKET expr:i2 RBRACKET
+    {:
+        // --- Verificación de tipo de índices ---
+        if (!"int".equals(i1.type)) {
+            semantic_error(idleft, idright,
+                "Índice debe ser int, se obtuvo " + i1.type);
+        }
+        if (!"int".equals(i2.type)) {
+            semantic_error(idleft, idright,
+                "Índice debe ser int, se obtuvo " + i2.type);
+        }
+
+        // --- NUEVO: verificación de límites en índices constantes ---
+        String arrType = lookupAndCheckInit(id, idleft, idright);
+        if (arrType != null && isArrayType(arrType)) {
+            int[] dims = getArrayDimensions(id);
+            if (dims != null) {
+                if ("int".equals(i1.type) && i1.constValue != null) {
+                    checkIndexBound(id, "fila",    i1.constValue, dims[0], idleft, idright);
+                }
+                if ("int".equals(i2.type) && i2.constValue != null) {
+                    checkIndexBound(id, "columna", i2.constValue, dims[1], idleft, idright);
+                }
+            }
+        } else if (arrType == null) {
+            // el error ya fue emitido por lookupAndCheckInit
+        } else {
+            semantic_error(idleft, idright,
+                "'" + id + "' no es un arreglo");
+        }
+    :}
+    ;
+
+// --------------------------------------------------------------------------
+// ESTRUCTURAS DE CONTROL
+// --------------------------------------------------------------------------
+
+control ::= if_stmt | do_while | switch_stmt ;
+
+// -- IF --
+
+if_stmt_cond ::= IF SEPARATOR LPAR expr:cond RPAR
+    {:
+        if (!"bool".equals(cond.type) && !"error".equals(cond.type)) {
+            semantic_error(condleft, condright,
+                "Condición del 'if' debe ser bool, se obtuvo " + cond.type);
+        }
         Lexer.pushIfScope(currentFunc);
+        enterScope("if" + Lexer.ifCount);
+    :}
+    ;
 
-    :};
-
-else_stmt_cond ::= ELSE SEPARATOR 
+else_stmt_cond ::= ELSE SEPARATOR
     {:
         Lexer.pushElseScope(currentFunc);
-    :};
+        enterScope("else" + Lexer.elseCount);
+    :}
+    ;
 
-// Condicional if / if-else
 if_stmt ::= if_stmt_cond bloque close_scope
     | if_stmt_cond bloque close_scope else_stmt_cond bloque close_scope
     | IF SEPARATOR LPAR error RPAR bloque
     | IF SEPARATOR LPAR error RPAR bloque else_stmt_cond bloque close_scope
     ;
 
-do_stmt_cond ::= DO SEPARATOR 
+// -- DO-WHILE --
+
+do_stmt_cond ::= DO SEPARATOR
     {:
         Lexer.pushDoScope(currentFunc);
-    :};
-
-// Bucle do-while: do ~ bloque while ~ <| condición |> !
-do_while ::= do_stmt_cond bloque close_scope WHILE SEPARATOR LPAR expr RPAR EXCLAMATION
-    | do_stmt_cond bloque close_scope WHILE SEPARATOR LPAR error RPAR EXCLAMATION
+        enterScope("do" + Lexer.doCount);
+    :}
     ;
 
-switch_stmt_cond ::= SWITCH SEPARATOR LPAR expr RPAR 
+do_while ::= do_stmt_cond bloque close_scope
+             WHILE SEPARATOR LPAR expr:cond RPAR EXCLAMATION
     {:
+        if (!"bool".equals(cond.type) && !"error".equals(cond.type)) {
+            semantic_error(condleft, condright,
+                "Condición del 'while' debe ser bool, se obtuvo " + cond.type);
+        }
+    :}
+    | do_stmt_cond bloque close_scope
+      WHILE SEPARATOR LPAR error RPAR EXCLAMATION
+    ;
+
+// -- SWITCH --
+
+switch_stmt_cond ::= SWITCH SEPARATOR LPAR expr:e RPAR
+    {:
+        if (!"int".equals(e.type) && !"char".equals(e.type) && !"error".equals(e.type)) {
+            semantic_error(eleft, eright,
+                "Expresión del 'switch' debe ser int o char, se obtuvo " + e.type);
+        }
+        switchExprTypes.push(e.type);
         Lexer.pushSwitchScope(currentFunc);
-    :};
-
-// Switch: switch ~ <| expr |> |: cases :|
-switch_stmt ::= switch_stmt_cond LBLOCK case_lista RBLOCK
-{:
-    Lexer.popScope();
-:}
-;
-
-// Lista de casos: opcionalmente termina con default
-case_lista ::= case_items default_case
-    | case_items
+        enterScope("switch" + Lexer.switchCount);
+    :}
     ;
 
-// Secuencia de casos
-case_items ::= case_item
-    | case_items case_item
-    ;
-
-case_stmt_cond ::= CASE SEPARATOR literal COLON 
+switch_stmt ::= switch_stmt_cond LBLOCK case_lista RBLOCK close_scope
     {:
-        Lexer.pushCaseScope(currentFunc, "case");
-    :};
+        if (!switchExprTypes.isEmpty()) switchExprTypes.pop();
+    :}
+    ;
 
-// Un caso: case ~ literal : sentencias
-case_item ::= case_stmt_cond sentencia_lista {: Lexer.popScope(); :}
+case_lista ::= case_items default_case | case_items ;
+
+case_items ::= case_item | case_items case_item ;
+
+case_stmt_cond ::= CASE SEPARATOR literal:lit COLON
+    {:
+        String switchType = switchExprTypes.isEmpty() ? null : switchExprTypes.peek();
+        if (switchType != null
+                && !isCompatible(lit.type, switchType)
+                && !"error".equals(lit.type)
+                && !"error".equals(switchType)) {
+            semantic_error(litleft, litright,
+                "Tipo del case (" + lit.type + ") incompatible con tipo del switch (" + switchType + ")");
+        }
+        Lexer.pushCaseScope(currentFunc, "case");
+        enterScope("switch" + Lexer.switchCount + "_case" + Lexer.caseCount);
+    :}
+    ;
+
+case_item ::= case_stmt_cond sentencia_lista close_scope
     | error COLON sentencia_lista
     ;
 
-// Caso default: default : sentencias (único, al final)
 default_case ::= DEFAULT COLON
-{:
-    Lexer.pushCaseScope(currentFunc, "default");
-:}
-sentencia_lista
-{:
-    Lexer.popScope();
-:}
-;
-
-// Sentencia return: return ~ expresión
-return_stmt ::= RETURN SEPARATOR expr
+    {:
+        Lexer.pushCaseScope(currentFunc, "default");
+        enterScope("switch" + Lexer.switchCount + "_default" + Lexer.caseCount);
+    :}
+    sentencia_lista close_scope
     ;
 
-// Entrada/Salida: cin ~ id, cout ~ expr
-io_stmt ::= CIN SEPARATOR LPAR ID RPAR
+// --------------------------------------------------------------------------
+// RETURN — usa e.type
+// --------------------------------------------------------------------------
+
+return_stmt ::= RETURN SEPARATOR expr:e
+    {:
+        if (currentReturnType == null) {
+            semantic_error(eleft, eright,
+                "Sentencia 'return' con valor dentro de '__main__' (no tiene tipo de retorno)");
+        } else if (!isCompatible(e.type, currentReturnType)) {
+            semantic_error(eleft, eright,
+                "Return: se esperaba " + currentReturnType +
+                " pero se obtuvo " + e.type);
+        }
+    :}
+    ;
+
+// --------------------------------------------------------------------------
+// E/S
+// --------------------------------------------------------------------------
+
+io_stmt ::=
+    CIN SEPARATOR LPAR ID:id RPAR
+    {:
+        String t = lookupSymbol(id);
+        if (t == null) {
+            semantic_error(idleft, idright,
+                "cin: variable '" + id + "' no declarada");
+        } else if (!isNumeric(t)) {
+            semantic_error(idleft, idright,
+                "cin: '" + id + "' no es un valor numerico (entero o flotante)");
+        } else {
+            // cin asigna un valor externo → la variable queda inicializada
+            markInitialized(id);
+        }
+    :}
     | COUT SEPARATOR LPAR expr RPAR
     ;
 
-// ===== EXPRESIONES (jerarquía de precedencia) =====
+// =============================================================================
+// EXPRESIONES — jerarquía completa, todas retornan ExprInfo
+// =============================================================================
 
-// Expresión completa
-expr ::= expr_log
+expr ::= expr_log:e {: RESULT = e; :} ;
+
+// --------------------------------------------------------------------------
+// Lógicas (@ AND, # OR) — no propagan constante (resultado bool)
+// --------------------------------------------------------------------------
+
+expr_log ::=
+    expr_log:e1 AND expr_rel:e2
+    {:
+        if (!"bool".equals(e1.type) && !"error".equals(e1.type))
+            semantic_error(e1left, e1right,
+                "Operando izquierdo de '@' debe ser bool, se obtuvo " + e1.type);
+        if (!"bool".equals(e2.type) && !"error".equals(e2.type))
+            semantic_error(e2left, e2right,
+                "Operando derecho de '@' debe ser bool, se obtuvo " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | expr_log:e1 OR expr_rel:e2
+    {:
+        if (!"bool".equals(e1.type) && !"error".equals(e1.type))
+            semantic_error(e1left, e1right,
+                "Operando izquierdo de '#' debe ser bool, se obtuvo " + e1.type);
+        if (!"bool".equals(e2.type) && !"error".equals(e2.type))
+            semantic_error(e2left, e2right,
+                "Operando derecho de '#' debe ser bool, se obtuvo " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | expr_rel:e {: RESULT = e; :}
     ;
 
-// Expresiones lógicas: @ (AND), # (OR)
-expr_log ::= expr_log AND expr_rel
-    | expr_log OR expr_rel
-    | expr_rel
+// --------------------------------------------------------------------------
+// Relacionales — resultado siempre bool, sin constante
+// --------------------------------------------------------------------------
+
+expr_rel ::=
+    EQUAL LPAR expr:e1 COMMA expr:e2 RPAR
+    {:
+        if (!isEqualityCompatible(e1.type, e2.type))
+            semantic_error(e1left, e1right,
+                "equal: tipos incomparables " + e1.type + " y " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | N_EQUAL LPAR expr:e1 COMMA expr:e2 RPAR
+    {:
+        if (!isEqualityCompatible(e1.type, e2.type))
+            semantic_error(e1left, e1right,
+                "n_equal: tipos incomparables " + e1.type + " y " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | LESS_T LPAR expr_arit:e1 COMMA expr_arit:e2 RPAR
+    {:
+        if (!isNumeric(e1.type) && !"error".equals(e1.type))
+            semantic_error(e1left, e1right,
+                "less_t: se esperaba numérico, se obtuvo " + e1.type);
+        if (!isNumeric(e2.type) && !"error".equals(e2.type))
+            semantic_error(e2left, e2right,
+                "less_t: se esperaba numérico, se obtuvo " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | LESS_TE LPAR expr_arit:e1 COMMA expr_arit:e2 RPAR
+    {:
+        if (!isNumeric(e1.type) && !"error".equals(e1.type))
+            semantic_error(e1left, e1right,
+                "less_te: se esperaba numérico, se obtuvo " + e1.type);
+        if (!isNumeric(e2.type) && !"error".equals(e2.type))
+            semantic_error(e2left, e2right,
+                "less_te: se esperaba numérico, se obtuvo " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | GREATHER_T LPAR expr_arit:e1 COMMA expr_arit:e2 RPAR
+    {:
+        if (!isNumeric(e1.type) && !"error".equals(e1.type))
+            semantic_error(e1left, e1right,
+                "greather_t: se esperaba numérico, se obtuvo " + e1.type);
+        if (!isNumeric(e2.type) && !"error".equals(e2.type))
+            semantic_error(e2left, e2right,
+                "greather_t: se esperaba numérico, se obtuvo " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | GREATHER_TE LPAR expr_arit:e1 COMMA expr_arit:e2 RPAR
+    {:
+        if (!isNumeric(e1.type) && !"error".equals(e1.type))
+            semantic_error(e1left, e1right,
+                "greather_te: se esperaba numérico, se obtuvo " + e1.type);
+        if (!isNumeric(e2.type) && !"error".equals(e2.type))
+            semantic_error(e2left, e2right,
+                "greather_te: se esperaba numérico, se obtuvo " + e2.type);
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | expr_arit:e {: RESULT = e; :}
     ;
 
-// Expresiones relacionales: equal, n_equal (boolean), less_t, less_te, greather_t, greather_te
-expr_rel ::= EQUAL      LPAR expr COMMA expr RPAR
-    | N_EQUAL            LPAR expr COMMA expr RPAR
-    | LESS_T             LPAR expr_arit COMMA expr_arit RPAR
-    | LESS_TE            LPAR expr_arit COMMA expr_arit RPAR
-    | GREATHER_T         LPAR expr_arit COMMA expr_arit RPAR
-    | GREATHER_TE        LPAR expr_arit COMMA expr_arit RPAR
-    | expr_arit
+// --------------------------------------------------------------------------
+// Aritméticas: +, -
+// Propaga constante cuando ambos operandos son int constantes.
+// --------------------------------------------------------------------------
+
+expr_arit ::=
+    expr_arit:e1 PLUS term:t
+    {:
+        if (isNumeric(e1.type) && isNumeric(t.type)) {
+            String rtype = resultType(e1.type, t.type);
+            // Propagación de constante solo para int+int
+            Integer cv = ("int".equals(rtype) && e1.constValue != null && t.constValue != null)
+                         ? e1.constValue + t.constValue : null;
+            RESULT = new ExprInfo(rtype, cv);
+        } else if ("string".equals(e1.type) && "string".equals(t.type)) {
+            RESULT = new ExprInfo("string");
+        } else {
+            semantic_error(e1left, e1right,
+                "'+': tipos no compatibles: " + e1.type + " y " + t.type);
+            RESULT = ExprInfo.error();
+        }
+    :}
+
+    | expr_arit:e1 MINUS term:t
+    {:
+        if (isNumeric(e1.type) && isNumeric(t.type)) {
+            String rtype = resultType(e1.type, t.type);
+            Integer cv = ("int".equals(rtype) && e1.constValue != null && t.constValue != null)
+                         ? e1.constValue - t.constValue : null;
+            RESULT = new ExprInfo(rtype, cv);
+        } else {
+            semantic_error(e1left, e1right,
+                "'-': tipos no compatibles: " + e1.type + " y " + t.type);
+            RESULT = ExprInfo.error();
+        }
+    :}
+
+    | term:t {: RESULT = t; :}
     ;
 
-// Expresiones aritméticas: +, -
-expr_arit ::= expr_arit PLUS term
-    | expr_arit MINUS term
-    | term
-    ;
-
+// --------------------------------------------------------------------------
 // Término: *, /, %
-term ::= term TIMES potencia
-    | term DIVIDE potencia
-    | term MOD potencia
-    | potencia
+// Propaga constante para int*int e int/int (división entera, descartando float).
+// --------------------------------------------------------------------------
+
+term ::=
+    term:t TIMES potencia:p
+    {:
+        if (isNumeric(t.type) && isNumeric(p.type)) {
+            String rtype = resultType(t.type, p.type);
+            Integer cv = ("int".equals(rtype) && t.constValue != null && p.constValue != null)
+                         ? t.constValue * p.constValue : null;
+            RESULT = new ExprInfo(rtype, cv);
+        } else {
+            semantic_error(tleft, tright,
+                "'*': tipos no compatibles: " + t.type + " y " + p.type);
+            RESULT = ExprInfo.error();
+        }
+    :}
+
+    | term:t DIVIDE potencia:p
+    {:
+        if (isNumeric(t.type) && isNumeric(p.type)) {
+            String rtype = resultType(t.type, p.type);
+            // División entera constante solo cuando ambos son int y divisor != 0
+            Integer cv = null;
+            if ("int".equals(rtype) && t.constValue != null && p.constValue != null) {
+                if (p.constValue == 0) {
+                    semantic_error(tleft, tright,
+                        "División entera por cero en expresión constante");
+                } else {
+                    cv = t.constValue / p.constValue;
+                }
+            }
+            RESULT = new ExprInfo(rtype, cv);
+        } else {
+            semantic_error(tleft, tright,
+                "'/': tipos no compatibles: " + t.type + " y " + p.type);
+            RESULT = ExprInfo.error();
+        }
+    :}
+
+    | term:t MOD potencia:p
+    {:
+        if ("int".equals(t.type) && "int".equals(p.type)) {
+            Integer cv = null;
+            if (t.constValue != null && p.constValue != null) {
+                if (p.constValue == 0) {
+                    semantic_error(tleft, tright,
+                        "Módulo por cero en expresión constante");
+                } else {
+                    cv = t.constValue % p.constValue;
+                }
+            }
+            RESULT = new ExprInfo("int", cv);
+        } else {
+            semantic_error(tleft, tright,
+                "'%': ambos operandos deben ser int, se obtuvo " + t.type + " y " + p.type);
+            RESULT = ExprInfo.error();
+        }
+    :}
+
+    | potencia:p {: RESULT = p; :}
     ;
 
+// --------------------------------------------------------------------------
 // Potencia: ^ (asociativa derecha)
-potencia ::= unario POWER potencia
-    | unario
+// Propaga constante para int^int con exponente >= 0.
+// --------------------------------------------------------------------------
+
+potencia ::=
+    unario:u POWER potencia:p
+    {:
+        if (isNumeric(u.type) && isNumeric(p.type)) {
+            String rtype = resultType(u.type, p.type);
+            Integer cv = null;
+            if ("int".equals(rtype) && u.constValue != null && p.constValue != null
+                    && p.constValue >= 0) {
+                int base = u.constValue, exp = p.constValue, result = 1;
+                for (int k = 0; k < exp; k++) result *= base;
+                cv = result;
+            }
+            RESULT = new ExprInfo(rtype, cv);
+        } else {
+            semantic_error(uleft, uright,
+                "'^': tipos no compatibles: " + u.type + " y " + p.type);
+            RESULT = ExprInfo.error();
+        }
+    :}
+
+    | unario:u {: RESULT = u; :}
     ;
 
-// Operadores unarios: - (solo literales), ++, --, $ (NOT)
-unario ::= MINUS INT_LIT
-    | MINUS FLOAT_LIT
-    | MINUS EXP_LIT
-    | MINUS FRAC_LIT
-    | INCREMENT ID
-    | DECREMENT ID
-    | NOT primario
-    | primario
+// --------------------------------------------------------------------------
+// Unarios
+// --------------------------------------------------------------------------
+
+unario ::=
+    // Negación numérica de literales — propagamos constante para int
+    MINUS INT_LIT:v    {: RESULT = new ExprInfo("int",   -v.intValue()); :}
+    | MINUS FLOAT_LIT  {: RESULT = new ExprInfo("float");                :}
+    | MINUS EXP_LIT    {: RESULT = new ExprInfo("float");                :}
+    | MINUS FRAC_LIT   {: RESULT = new ExprInfo("float");                :}
+
+    // ++ : propaga tipo, no constante (efecto lateral)
+    | INCREMENT ID:id
+    {:
+        String t = lookupAndCheckInit(id, idleft, idright);
+        if (t == null) {
+            RESULT = ExprInfo.error();
+        } else if (!isNumeric(t)) {
+            semantic_error(idleft, idright,
+                "'++': la variable '" + id + "' debe ser numérica, es " + t);
+            RESULT = ExprInfo.error();
+        } else {
+            markInitialized(id);   // ++ también cuenta como escritura
+            RESULT = new ExprInfo(t);
+        }
+    :}
+
+    // -- : propaga tipo, no constante
+    | DECREMENT ID:id
+    {:
+        String t = lookupAndCheckInit(id, idleft, idright);
+        if (t == null) {
+            RESULT = ExprInfo.error();
+        } else if (!isNumeric(t)) {
+            semantic_error(idleft, idright,
+                "'--': la variable '" + id + "' debe ser numérica, es " + t);
+            RESULT = ExprInfo.error();
+        } else {
+            markInitialized(id);   // -- también cuenta como escritura
+            RESULT = new ExprInfo(t);
+        }
+    :}
+
+    // NOT ($): solo bool, sin constante
+    | NOT primario:p
+    {:
+        if (!"bool".equals(p.type) && !"error".equals(p.type)) {
+            semantic_error(pleft, pright,
+                "'$' (NOT): se esperaba bool, se obtuvo " + p.type);
+        }
+        RESULT = new ExprInfo("bool");
+    :}
+
+    | primario:p {: RESULT = p; :}
     ;
 
-// Elemento primario: literal, variable, arreglo, función, agrupación
-primario ::= literal
-    | ID
-    | arr_access
-    | llamada
-    | LPAR expr RPAR
+// --------------------------------------------------------------------------
+// Primario
+// --------------------------------------------------------------------------
+
+primario ::=
+    literal:lit {: RESULT = lit; :}
+
+    | ID:id
+    {:
+        // lookupAndCheckInit: verifica existencia Y que esté inicializada
+        String t = lookupAndCheckInit(id, idleft, idright);
+        if (t == null) {
+            RESULT = ExprInfo.error();
+        } else if (isArrayType(t)) {
+            semantic_error(idleft, idright,
+                "'" + id + "' es un arreglo; use indexación para acceder a sus elementos");
+            RESULT = new ExprInfo(baseType(t));
+        } else {
+            RESULT = new ExprInfo(t);
+        }
+    :}
+
+    | arr_access_expr:a {: RESULT = a; :}
+
+    | llamada:ll {: RESULT = ll; :}
+
+    | LPAR expr:e RPAR {: RESULT = e; :}
     ;
 
-// Llamada a función: id ~ <| args |>
-llamada ::= ID LPAR arg_lista RPAR
-    | ID LPAR RPAR
+// --------------------------------------------------------------------------
+// LLAMADAS A FUNCIÓN — retorna ExprInfo con el tipo de retorno, sin constante
+// --------------------------------------------------------------------------
+
+llamada ::=
+    ID:id LPAR
+    {: beginArgList(); :}
+    arg_lista RPAR
+    {:
+        List<String> args = endArgList();
+        String retType = checkCall(id, args, idleft, idright);
+        RESULT = new ExprInfo(retType);
+    :}
+
+    | ID:id LPAR RPAR
+    {:
+        String retType = checkCall(id, Collections.emptyList(), idleft, idright);
+        RESULT = new ExprInfo(retType);
+    :}
     ;
 
-// Lista de argumentos: expresiones separadas por coma
-arg_lista ::= expr
-    | arg_lista COMMA expr
+arg_lista ::=
+    expr:e
+    {: addArg(e.type); :}
+
+    | arg_lista COMMA expr:e
+    {: addArg(e.type); :}
     ;
 
-// Literales reconocidos por el lenguaje
-literal ::= INT_LIT
-    | FLOAT_LIT
-    | EXP_LIT
-    | FRAC_LIT
-    | BOOL_LIT
-    | CHAR_LIT
-    | STRING_LIT
+// --------------------------------------------------------------------------
+// LITERALES — propagan valor constante para INT_LIT
+// --------------------------------------------------------------------------
+
+literal ::=
+    INT_LIT:i    {: RESULT = new ExprInfo("int",   i.intValue()); :}
+    | FLOAT_LIT  {: RESULT = new ExprInfo("float");               :}
+    | EXP_LIT    {: RESULT = new ExprInfo("float");               :}
+    | FRAC_LIT   {: RESULT = new ExprInfo("float");               :}
+    | BOOL_LIT   {: RESULT = new ExprInfo("bool");                :}
+    | CHAR_LIT   {: RESULT = new ExprInfo("char");                :}
+    | STRING_LIT {: RESULT = new ExprInfo("string");              :}
     ;

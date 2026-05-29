@@ -14,28 +14,33 @@ _miChar2_         	char              	No                	6     	7
 _x30_             	int               	No                	7     	6
 _x40_             	bool              	No                	8     	7
 _x50_             	float[1000][100]  	No                	9     	8
-_                 	int               	No                	12    	6
+_                 	int               	No                	10    	6
+_1                	float             	No                	11    	8
+_x51_             	string            	No                	12    	9
+_i_               	int               	No                	26    	6
+id                	int               	No                	27    	6
+var               	int               	No                	28    	6
 
 SCOPE: func1_if1
 -------------------------------------------------------------------------------
 NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-y                 	int               	No                	16    	7
-x45               	char              	No                	17    	8
-ch33              	char              	No                	19    	8
+y                 	int               	No                	14    	7
+x45               	char              	No                	15    	8
+ch33              	char              	No                	17    	8
 
 SCOPE: func1_else1
 -------------------------------------------------------------------------------
 NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-y                 	int               	No                	22    	7
-str2              	string            	No                	23    	10
+y                 	int               	No                	20    	7
+str2              	string            	No                	21    	10
 
 SCOPE: func1_if2
 -------------------------------------------------------------------------------
 NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
-x                 	int               	No                	26    	7
+x                 	int               	No                	24    	7
 
 SCOPE: func1_do1
 -------------------------------------------------------------------------------
@@ -48,7 +53,7 @@ NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
 _b1_              	bool              	Sí                	36    	24
 _i1_              	int               	Sí                	36    	34
-b                 	int               	No                	37    	6
+b                 	bool              	No                	37    	7
 
 SCOPE: _func2__if1
 -------------------------------------------------------------------------------
@@ -81,11 +86,13 @@ NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 miChar            	char              	No                	60    	7
 miChar2           	char              	No                	61    	7
 str1              	string            	No                	62    	9
-fl1               	float             	No                	63    	8
+fl1               	int               	No                	63    	6
+fl2               	float             	No                	64    	8
 in1               	int               	No                	65    	6
-fl2               	float             	No                	66    	8
-bl0               	bool              	No                	77    	7
-bl1               	bool              	No                	79    	7
+fl3               	float             	No                	66    	8
+arr               	int[67][67]       	No                	73    	6
+bl0               	bool              	No                	78    	7
+bl1               	bool              	No                	80    	7
 
 SCOPE: main_if1
 -------------------------------------------------------------------------------

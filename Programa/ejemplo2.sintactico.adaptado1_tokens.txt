@@ -204,8 +204,10 @@ ID_LEXEMA 	LÍNEA 	COLUMNA 	TOKEN                	LEXEMA
 12        	50    	13      	EXCLAMATION          	!
 65        	51    	2       	CIN                  	cin
 2         	51    	5       	SEPARATOR            	~
-64        	51    	6       	ID                   	_s1_
-12        	51    	11      	EXCLAMATION          	!
+4         	51    	6       	LPAR                 	<|
+64        	51    	8       	ID                   	_s1_
+10        	51    	12      	RPAR                 	|>
+12        	51    	15      	EXCLAMATION          	!
 31        	52    	2       	COUT                 	cout
 2         	52    	6       	SEPARATOR            	~
 4         	52    	7       	LPAR                 	<|

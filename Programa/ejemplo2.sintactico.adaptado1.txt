@@ -48,7 +48,7 @@ empty~__main__ <|  |>   |: ¡¡ semantico tipo void
 	_arr_<<67+_i_>><<67+_i_>> <- -0.01 + 10e10 * "sd"!  ¡¡ semantico
 	bool~_b1_! ¡¡semantico
 	string~_s1_! ¡¡semantico
-	cin~_s1_ ! ¡¡semantico
+	cin~<|_s1_|> ! ¡¡semantico
 	cout~<| _b1_ |> ! ¡¡semantico
 	cout~<| true |> ! ¡¡semantico
 	cout~<| -6//7 |> !

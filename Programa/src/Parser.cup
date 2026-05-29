@@ -95,6 +95,7 @@ non terminal if_stmt_cond, else_stmt_cond;
 non terminal case_stmt_cond, switch_stmt_cond;
 non terminal do_stmt_cond;
 non terminal close_scope;
+non terminal func_stmt_cond;
 
 non terminal String tipo;
 non terminal String tipo_retorno;
@@ -139,30 +140,20 @@ main_proc ::= EMPTY SEPARATOR MAIN LPAR RPAR
 
 close_scope ::= {: Lexer.popScope(); :};
 
+func_stmt_cond ::= tipo_retorno:tr SEPARATOR ID:id
+    {:
+        currentFunc = id;
+        Lexer.ifCount = 0;
+        Lexer.elseCount = 0;
+        Lexer.switchCount = 0;
+        Lexer.doCount = 0;
+        Lexer.pushScope(currentFunc);
+    :};
+
 // Función: tipo_retorno ~ nombre ~ <| parámetros |> bloque
 // Crea un scope con el nombre de la función
-funcion ::= tipo_retorno:tr SEPARATOR ID:id LPAR param_lista:pl RPAR 
-    {:
-        currentFunc = id;
-        Lexer.ifCount = 0;
-        Lexer.elseCount = 0;
-        Lexer.switchCount = 0;
-        Lexer.doCount = 0;
-        Lexer.pushScope(currentFunc);
-    :}
-    bloque close_scope
-    | tipo_retorno:tr SEPARATOR ID:id LPAR RPAR 
-    {:
-        currentFunc = id;
-        Lexer.ifCount = 0;
-        Lexer.elseCount = 0;
-        Lexer.switchCount = 0;
-        Lexer.doCount = 0;
-        Lexer.pushScope(currentFunc);
-    :}
-    bloque close_scope
-    | tipo_retorno SEPARATOR ID LPAR param_lista RPAR error
-    | tipo_retorno SEPARATOR ID LPAR RPAR error
+funcion ::= func_stmt_cond LPAR param_lista RPAR bloque close_scope
+    | func_stmt_cond LPAR param_lista RPAR error close_scope
     ;
 
 // Tipo de retorno de función
@@ -185,6 +176,7 @@ tipo_retorno ::= INT
 // Lista de parámetros: separados por coma
 param_lista ::= param
     | param_lista COMMA param
+    | /* Vacio */
     ;
 
 // Parámetro: tipo ~ identificador
@@ -241,54 +233,54 @@ sentencia ::= decl EXCLAMATION
 
 // Declaración de variable o arreglo
 decl ::= tipo:t SEPARATOR ID:id
-{:
-    Lexer.addSymbol(
-        id,
-        t,
-        "No",
-        idleft,
-        idright
-    );
-:}
+    {:
+        Lexer.addSymbol(
+            id,
+            t,
+            "No",
+            idleft,
+            idright
+        );
+    :}
 
-| tipo:t SEPARATOR ID:id ASSIGN expr
-{:
-    Lexer.addSymbol(
-        id,
-        t,
-        "No",
-        idleft,
-        idright
-    );
-:}
+    | tipo:t SEPARATOR ID:id ASSIGN expr
+    {:
+        Lexer.addSymbol(
+            id,
+            t,
+            "No",
+            idleft,
+            idright
+        );
+    :}
 
-| tipo:t SEPARATOR ID:id
-  LBRACKET INT_LIT RBRACKET
-  LBRACKET INT_LIT RBRACKET
-{:
-    Lexer.addSymbol(
-        id,
-        t + "[][]",
-        "No",
-        idleft,
-        idright
-    );
-:}
+    | tipo:t SEPARATOR ID:id
+    LBRACKET INT_LIT:a RBRACKET
+    LBRACKET INT_LIT:b RBRACKET
+    {:
+        Lexer.addSymbol(
+            id,
+            t + "[" + a.toString() + "][" + b.toString() + "]",
+            "No",
+            idleft,
+            idright
+        );
+    :}
 
-| tipo:t SEPARATOR ID:id
-  LBRACKET INT_LIT RBRACKET
-  LBRACKET INT_LIT RBRACKET
-  ASSIGN LBLOCK arr_init RBLOCK
-{:
-    Lexer.addSymbol(
-        id,
-        t + "[][]",
-        "No",
-        idleft,
-        idright
-    );
-:}
-;
+    | tipo:t SEPARATOR ID:id
+    LBRACKET INT_LIT:a RBRACKET
+    LBRACKET INT_LIT:b RBRACKET
+    ASSIGN LBLOCK arr_init RBLOCK
+    {:
+        Lexer.addSymbol(
+            id,
+            t + "[" + a.toString() + "][" + b.toString() + "]",
+            "No",
+            idleft,
+            idright
+        );
+    :}
+    ;
 // Inicialización de arreglo: expresiones separadas por coma, permite sublistas
 arr_init ::= expr
     | LBLOCK arr_init RBLOCK
@@ -387,8 +379,8 @@ return_stmt ::= RETURN SEPARATOR expr
     ;
 
 // Entrada/Salida: cin ~ id, cout ~ expr
-io_stmt ::= CIN SEPARATOR ID
-    | COUT SEPARATOR expr
+io_stmt ::= CIN SEPARATOR LPAR ID RPAR
+    | COUT SEPARATOR LPAR expr RPAR
     ;
 
 // ===== EXPRESIONES (jerarquía de precedencia) =====

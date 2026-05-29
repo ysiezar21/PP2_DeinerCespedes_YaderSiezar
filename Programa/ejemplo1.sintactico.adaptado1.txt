@@ -29,7 +29,7 @@
 	while~<|equal<|1*id,2/f<||>|>@less_te<|var,f1<|1,'c',"d",f1<|x|>|>|>#$<|false|>|>!¡¡semantico
 	cout~<|"Hola mundo"|>!
 	cout~<|Holamundo|>!
-	cin~_x22_!
+	cin~<|_x22_|>!
 	return~-5.6!¡¡cambio en retorno genera semantico
  :|  
 

@@ -6,13 +6,14 @@ SCOPE: func1
 -------------------------------------------------------------------------------
 NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
+x22               	char              	Sí                	2     	20
 a                 	float             	No                	3     	8
 _x22_             	char              	No                	4     	7
 _miChar_          	char              	No                	5     	7
 _miChar2_         	char              	No                	6     	7
 _x30_             	int               	No                	7     	6
 _x40_             	bool              	No                	8     	7
-_x50_             	float[][]         	No                	9     	8
+_x50_             	float[1000][100]  	No                	9     	8
 _                 	int               	No                	12    	6
 
 SCOPE: func1_if1
@@ -45,6 +46,8 @@ SCOPE: _func2_
 -------------------------------------------------------------------------------
 NOMBRE            	TIPO              	PARAMETRO             	LÍNEA 	COLUMNA
 -------------------------------------------------------------------------------
+_b1_              	bool              	Sí                	36    	24
+_i1_              	int               	Sí                	36    	34
 b                 	int               	No                	37    	6
 
 SCOPE: _func2__if1
